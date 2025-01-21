@@ -1,0 +1,359 @@
+---
+title: "Untitled"
+output: html_document
+date: "2024-09-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Packages
+
+```{r}
+library(ape); packageVersion("ape")
+library(ggplot2); packageVersion("ggplot2")
+library(phyloseq); packageVersion("phyloseq")
+library(Biostrings); packageVersion("Biostrings")
+library(ranacapa); packageVersion("ranacapa")
+library(microbiome); packageVersion("microbiome")
+library(ggpubr); packageVersion("ggpubr")
+library(DEGreport); packageVersion("DEGreport")
+library(ggforce)
+library(ggrepel)
+library(viridis)
+library(RColorBrewer)
+library(stringr)
+```
+
+Make your phyloseq object
+
+```{r}
+seqtab.nochim <- read.table('/Users/kelse/Dropbox/PhD/Papers/comparative analysis/This is legit your finalised files/Taranaki/seqtab_final.txt', sep = "\t", row.names = 1, header = T)
+taxa <- readDNAStringSet('/Users/kelse/Dropbox/PhD/Papers/comparative analysis/This is legit your finalised files/Taranaki/repset_species.fasta')
+metadata <- read.delim('/Users/kelse/Dropbox/PhD/Papers/comparative analysis/This is legit your finalised files/Taranaki/well_metadata_new_anon.txt', header = T, row.names = 1, sep = "\t")
+
+names(seqtab.nochim) <- gsub(x=names(seqtab.nochim), pattern = "D.", replacement = "D-")
+colnames(seqtab.nochim)[1] <- "34_null_P231212D-0270A"
+colnames(seqtab.nochim)[8] <- "T32b-2_null_P231212D-0285A"
+
+taxa <- as.data.frame(taxa)
+taxa <- rownames(taxa) %>% as.data.frame()
+taxa <- str_split_fixed(taxa$., ";", 8) %>% as.data.frame()
+tax1 <- str_split_fixed(taxa$V1, " ", 2) %>% as.data.frame()
+taxa <- taxa[-c(1)]
+
+taxa <- cbind(tax1, taxa)
+row.names(taxa) <- taxa$V1
+taxa <- taxa[-c(1)]
+taxa <- taxa[-c(8)]
+colnames(taxa) <- c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+taxa <- as.matrix(taxa)
+
+taxdf <- taxa %>% as.data.frame()
+
+ps <- phyloseq(otu_table(seqtab.nochim, taxa_are_rows=T), 
+               sample_data(metadata), 
+               tax_table(taxa))
+
+ntaxa(ps)
+nsamples(ps)
+sort(sample_sums(ps))
+
+ps <- phyloseq::subset_taxa(ps, Family != "Mitochondria")
+ps <- phyloseq::subset_taxa(ps, Class != "Chloroplast")
+ps <- phyloseq::subset_taxa(ps, Domain != "NA")
+
+sample_sums(ps) %>% summary()
+
+
+tree <- read.tree("/Users/kelse/Dropbox/PhD/Papers/comparative analysis/This is legit your finalised files/Taranaki/tree_species.fasta")
+random_tree <- rtree(ntaxa(tree), rooted = T, tip.label = taxa_names(tree))
+
+tips <- random_tree$tip.label
+tips <- as.data.frame(tips)
+
+dd <- tips %>% tidyr::extract(tips, into = c("tips", "col2"), "^(.*?_.*?)_(.*)$")
+
+dd <- dd[-c(2)]
+
+new_tips <- as.vector(dd)
+new_tips <- unlist(new_tips$tips)
+
+random_tree$tip.label <- new_tips
+
+ps <- merge_phyloseq(ps, random_tree)
+
+
+
+rare_ps <- rarefy_even_depth(ps, 80900, rngseed = T)
+ntaxa(rare_ps)
+
+rm(new_tips)
+rm(dd)
+rm(random_tree)
+rm(taxa)
+rm(tips)
+rm(tax1)
+```
+
+Alpha diversity:
+- Observed richness: number of species
+- Shannon
+
+```{r}
+alpha <- estimate_richness(rare_ps, measures = c("Observed", "Shannon"))
+
+alpha
+alpha <- alpha %>% dplyr::slice(2:25, 1)
+metadata <- cbind(metadata, alpha)
+
+rm(alpha)
+
+observed_alpha <- ggplot(metadata, aes(x = Well, y = Observed)) + geom_boxplot(outlier.shape = NA) + stat_compare_means(method = "kruskal.test", paired = T, position = position_nudge(x = 2.5)) + geom_jitter(width = 0.2) + scale_y_continuous(limits=c(0,1175)) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+shannon_alpha <- ggplot(metadata, aes(x = Well, y = Shannon))+ geom_boxplot(outlier.shape = NA) + stat_compare_means(method = "kruskal.test", paired = T, position = position_nudge(x = 2.5)) + geom_jitter(width = 0.2)+ scale_y_continuous(limits=c(0,3.75))+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+arranged_alpha <- ggarrange(observed_alpha, shannon_alpha)
+arranged_alpha
+```
+
+Beta diversity
+
+PCoA with Unifrac distance
+```{r}
+set.seed(105)
+ordpcw <- ordinate(rare_ps, "PCoA", "unifrac", weighted = T)
+ordpcunw <- ordinate(rare_ps, "PCoA", "unifrac", weighted = F)
+
+aa <- plot_ordination(rare_ps, ordpcw, justDF = T)
+aa <- aa[c(1,2)]
+bb <- plot_ordination(rare_ps, ordpcunw, justDF = T)
+bb <- bb[c(1,2)]
+
+plot_ordination(rare_ps, ordpcw)
+plot_ordination(rare_ps, ordpcunw)
+
+colnames(aa) <- c("Axis_1_w", "Axis_2_w")
+colnames(bb) <- c("Axis_1_unw", "Axis_2_unw")
+
+ordination <- cbind(aa, bb)
+
+ordination<- merge(ordination, metadata, by = "row.names", all.x = T)
+
+ordination$Site <- as.factor(as.character(ordination$Site))
+
+
+color_site1 <- c("#FD8D3C", "#F03B20", "#BD0026")
+color_site2 <- c("#A8DDB5", "#8C96C6", "#8856A7", "#810F7C")
+
+
+unw <- ggplot(ordination, aes(x = Axis_1_unw, y = Axis_2_unw, colour = Well, shape = Site)) + geom_point(size = 4) + ylab("Axis 2 12.9%") + xlab("Axis 1 13.7%") + theme(legend.position = "bottom") + guides(color = guide_legend(nrow = 1, byrow = T), shape = guide_legend(nrow = 1, byrow = T)) + ggtitle("Unweighted - Taranaki") +
+    scale_colour_manual(values = c(color_site1,color_site2))
+
+w <- ggplot(ordination, aes(x = Axis_1_w, y = Axis_2_w, colour = Well, shape = Site)) + geom_point(size = 4) + xlab("Axis 1 58.8%") + ylab("Axis 2 20.3%") + theme(legend.position = "none") + ggtitle("Weighted - Taranaki") +
+    scale_colour_manual(values = c(color_site1,color_site2))
+
+ggarrange(unw, w, nrow = 2)
+
+
+ggsave("unw_w_Taranaki_beta.png", units = "in", width = 10, height = 9)
+```
+
+```{r}
+env <- metadata[c(3:16)]
+env <- env[-c(10)]
+
+en <- envfit(ordpcw, env, permutations = 999, na.rm = TRUE)
+en
+
+en_coord <- as.data.frame(scores(en, "vectors")) *ordiArrowMul(en)
+en_coord_sig <- en_coord[c(2:7, 12:13),]
+
+ggplot(metadata, aes(x = MDS1, y = MDS2))+
+  geom_point(aes(colour = Well, shape = Site, size = 5)) +
+  geom_text_repel(data = en_coord_sig, aes(x = NMDS1, y = NMDS2), 
+                  colour = "grey30",fontface = "bold", 
+                  label = row.names(en_coord_sig), nudge_x = 0.05) + 
+     geom_segment(aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2), 
+       data = en_coord_sig, size =1, alpha = 0.5, colour = "grey30") + xlab("NMDS1") + ylab("NMDS2") + guides(size = "none") + guides(color = guide_legend(override.aes = list(size = 3)), shape = guide_legend(override.aes = list(size = 3))) +
+    scale_colour_manual(values = c(color_site1,color_site2))
+```
+
+
+
+NMDS with brar-curtis distance
+```{r}
+NMDS.ord <- ordinate(rare_ps, "NMDS", "bray")
+NMDS.ord
+
+#Stress = 0.116
+
+stressplot(NMDS.ord)
+
+NMDS.ordw <- ordinate(rare_ps, "NMDS", "unifrac", weighted = T)
+NMDS.ordw
+#stress = 0.0733
+
+NMDS.ordunw <- ordinate(rare_ps, "NMDS", "unifrac", weighted = F)
+NMDS.ordunw
+#stress = 0.104
+
+NMDS_plot_well <- plot_ordination(rare_ps, NMDS.ord , color = "Well", shape = "Site")
+
+NMDS_plot_well + geom_point(size = 4) + theme(legend.text = element_text(size = 10)) + guides(color = guide_legend(override.aes = list(size = 4)),shape = guide_legend(override.aes = list(size = 4))) +
+    scale_colour_manual(values = c(color_site1,color_site2))
+
+ggsave("nmds_Taranaki_beta.png", units = "cm", width = 22, height = 12)
+
+NMDS_plot_well <- plot_ordination(rare_ps, NMDS.ordunw , color = "Well", shape = "Site")
+
+NMDS_plot_well + geom_point(size = 4) + theme(legend.text = element_text(size = 10)) + guides(color = guide_legend(override.aes = list(size = 4)),shape = guide_legend(override.aes = list(size = 4))) +
+    scale_colour_manual(values = c(color_site1,color_site2)) + ggtitle("Unweighted")
+
+
+
+```
+
+```{r}
+NMDS_plot_well <- plot_ordination(rare_ps, NMDS.ord , color = "Well", shape = "Site")
+
+NMDS_plot_well + geom_point(size = 4) + theme(legend.text = element_text(size = 10)) + guides(color = guide_legend(override.aes = list(size = 4)),shape = guide_legend(override.aes = list(size = 4))) +
+    scale_colour_manual(values = c(color_site1,color_site2)) 
+
+nmdsvalues <- NMDS.ord$points %>% as.data.frame()
+
+metadata <- merge(metadata, nmdsvalues, by = "row.names", all.x = T)
+rownames(metadata) <- metadata[,1]
+metadata <- metadata[-c(1)]
+
+ggplot(metadata, aes(x = MDS1, y = MDS2, shape = Site, colour = Well)) + geom_point(aes(size = 5)) +
+    scale_colour_manual(values = c(color_site1,color_site2)) + guides(size = "none") + guides(color = guide_legend(override.aes = list(size = 5)), shape = guide_legend(override.aes = list(size = 5))) + xlab("NMDS1") + ylab("NMDS2")
+
+ggsave("Taranaki_beta_nmds_bray.png", units = "cm", width = 22, height = 12)
+
+env <- metadata[c(3:16)]
+env <- env[-c(10)]
+
+library(vegan)
+en <- envfit(NMDS.ord, env, permutations = 999, na.rm = TRUE)
+en
+
+en_coord <- as.data.frame(scores(en, "vectors")) *ordiArrowMul(en)
+en_coord_sig <- en_coord[c(2:7, 12:13),]
+
+ggplot(metadata, aes(x = MDS1, y = MDS2))+
+  geom_point(aes(colour = Well, shape = Site, size = 5)) +
+  geom_text_repel(data = en_coord_sig, aes(x = NMDS1, y = NMDS2), 
+                  colour = "grey30",fontface = "bold", 
+                  label = row.names(en_coord_sig), nudge_x = 0.05) + 
+     geom_segment(aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2), 
+       data = en_coord_sig, size =1, alpha = 0.5, colour = "grey30") + xlab("NMDS1") + ylab("NMDS2") + guides(size = "none") + guides(color = guide_legend(override.aes = list(size = 3)), shape = guide_legend(override.aes = list(size = 3))) +
+    scale_colour_manual(values = c(color_site1,color_site2))
+
+ggsave("Taranaki_beta_nmds_bray_w_arrows.png", units = "cm", width = 22, height = 12)
+```
+
+```{r}
+rm(aa)
+rm(bb)
+rm(arranged_alpha)
+rm(en)
+rm(en_coord)
+rm(en_coord_sig)
+rm(env)
+rm(NMDS.ord)
+rm(ordination)
+rm(observed_alpha)
+rm(nmdsvalues)
+rm(NMDS_plot_well)
+rm(ordpcunw)
+rm(ordpcw)
+rm(shannon_alpha)
+rm(w)
+rm(unw)
+```
+
+Relative Abundance
+
+```{r}
+
+relative_abundance_colours <- c("#999999", "#E69F00", "#56B4E9", "#009E73",
+          "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#00AFBB", "#E7B800", "#FC4E07", "#2D2D2D")
+
+library(data.table)
+
+phylum_plot0.1 <- rare_ps %>% tax_glom(taxrank = "Genus") %>% transform_sample_counts(function(x) {x/sum(x)}) %>% psmelt() %>% dplyr::filter(Abundance >= 0.01) %>% dplyr::arrange(Phylum)
+
+setDT(phylum_plot0.1)
+phylum_plot0.1[Domain == "Archaea", Phylum := paste0("A_", Phylum)]
+
+ggplot(phylum_plot0.1, aes(x = Phylum, y = Abundance, fill = Phylum)) + geom_bar(stat = "identity", position = "dodge", show.legend = F)+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Well, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 12))
+
+ggplot(phylum_plot0.1, aes(x = Phylum, y = Abundance, fill  = Phylum)) + geom_boxplot( show.legend = F) + geom_jitter()+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Well, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 12))
+
+ggsave("Taranaki_phylum_0.1_abundance.png", units = "cm", width = 26, height = 13.5)
+
+genus_plot0.5 <- rare_ps %>% tax_glom(taxrank = "Genus") %>% transform_sample_counts(function(x) {x/sum(x)}) %>% psmelt() %>% filter(Abundance > 0.05) %>% arrange(Phylum)
+
+setDT(genus_plot0.5)
+
+genus_plot0.5[Domain == "Archaea", Genus := paste0("A_", Genus)]
+
+
+genus_plot0.5$Genus[which(genus_plot0.5$Genus == "Burkholderia-Caballeronia-Paraburkholderia")] <-  "BCP"
+
+ggplot(phylum_plot0.1, aes(x = Phylum, y = Abundance, fill  = Phylum)) + geom_bar(stat = "identity", position = "dodge", show.legend = F)+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Well, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1)) +scale_fill_manual(values = relative_abundance_colours) + ggtitle("Relative abundance of phylum > 1.5%")
+
+ggplot(genus_plot0.5, aes(x = Genus, y = Abundance, fill  = Phylum)) + geom_bar(stat = "identity", position = "dodge")+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Well, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 13)) +scale_fill_manual(values = c("#999999", "#00AFBB", "#E7B800", "#2D2D2D" ))
+
+r_abundance <- ggarrange(phylum_0.1, genus_0.5, ncol = 1)
+
+blank <- ggplot() + geom_blank() + theme_void()
+alpha <- ggarrange(observed_alpha, shannon_alpha, blank, blank, nrow = 2, ncol = 2)
+alpha1 <- ggarrange(observed_alpha, shannon_alpha, nrow = 2, ncol = 1)
+
+
+ggarrange(alpha1, r_abundance)
+ggarrange(arranged_alpha, phylum_0.1, genus_0.5, ncol = 1, heights = c(1.5,1.75,1.75), widths = 1.5, labels = c("A", "B", "C"))
+
+ggsave("plot1.png", units = "cm", width = 20, height = 30)
+```
+
+```{r}
+ggplot(phylum_plot0.1, aes(x = Phylum, y = Abundance, color = Phylum)) + geom_boxplot(show.legend = F, outlier.shape = NA) + geom_point()+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Well, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 12)) + guides(color="none")
+
+ggsave("Taranaki_phylum_0.1_abundance_box.png", units = "cm", width = 26, height = 13.5)
+
+
+highlight_asv <- phylum_plot0.1 %>% dplyr::filter(OTU == "ASV_1")
+highlight_asv3 <- phylum_plot0.1 %>% dplyr::filter(OTU == "ASV_3")
+highlight_methano <- phylum_plot0.1 %>% dplyr::filter(Domain == "Archaea")
+
+
+ggplot(phylum_plot0.1, aes(x = Phylum, y = Abundance, color = Phylum)) + geom_boxplot(show.legend = F, outlier.shape = NA) + geom_point(alpha = 0.2)+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Well, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 12)) + guides(color="none")+ geom_point(data=highlight_asv, aes(x=Phylum,y=Abundance, size = 1), color='red') + guides(size = "none")
+
+ggsave("Taranaki_phylum_0.1_abundance_ASV_1.png", units = "cm", width = 26, height = 13.5)
+
+ggplot(phylum_plot0.1, aes(x = Phylum, y = Abundance, color = Phylum)) + geom_boxplot(show.legend = F, outlier.shape = NA) + geom_point(alpha = 0.2)+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Well, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 12)) + guides(color="none")+ geom_point(data=highlight_asv3, aes(x=Phylum,y=Abundance, size = 1), color='red') + guides(size = "none")
+
+ggsave("Taranaki_phylum_0.1_abundance_ASV_3.png", units = "cm", width = 26, height = 13.5)
+
+ggplot(phylum_plot0.1, aes(x = Phylum, y = Abundance, color = Phylum)) + geom_boxplot(show.legend = F, outlier.shape = NA) + geom_point(alpha = 0.2)+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Well, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 12)) + guides(color="none")+ geom_point(data=highlight_methano, aes(x=Phylum,y=Abundance, size = 1), color='red') + guides(size="none")
+
+ggsave("Taranaki_phylum_0.1_abundance_meth.png", units = "cm", width = 26, height = 13.5)
+
+```
+
+
+

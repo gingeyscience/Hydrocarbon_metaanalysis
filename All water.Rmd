@@ -1,0 +1,647 @@
+---
+title: "phyloseq"
+output: html_document
+date: "2024-05-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This is a pipleine using phyloseq
+
+```{r}
+library(ggplot2); packageVersion("ggplot2")
+library(phyloseq); packageVersion("phyloseq")
+library(Biostrings); packageVersion("Biostrings")
+library(ranacapa); packageVersion("ranacapa")
+library(microbiome); packageVersion("microbiome")
+library(ggpubr); packageVersion("ggpubr")
+library(DEGreport); packageVersion("DEGreport")
+library(dplyr)
+library(stringr)
+```
+
+#```{r}
+taxonomy <- readDNAStringSet('/Users/kelse/Desktop/03_tabletax/repsetspecies.fasta')
+taxonomy <- as.data.frame(taxonomy)
+tax <- rownames(taxonomy) %>% as.data.frame()
+tax <- str_split_fixed(tax$., ";", 7) %>% as.data.frame()
+tax1 <- str_split_fixed(tax$V1, " ", 2) %>% as.data.frame()
+
+tax <- cbind(tax1, tax)
+tax <- tax[-c(3,9)]
+row.names(tax) <- tax$V1
+tax <- tax[-c(1)]
+colnames(tax) <- c("Domain", "Phylum", "Class", "Order", "Family", "Genus")
+
+tax %>% summarise_all(~ sum(Domain == "NA", na.rm = TRUE))
+tax %>% summarise_all(~ sum(Phylum == "NA", na.rm = TRUE))
+aa <- subset(tax, Domain == "NA")
+bb <- subset(tax, Phylum == "NA")
+
+aa$ASV <- rownames(aa)
+bb$ASV <- rownames(bb)
+
+fas <- "/Users/kelse/Desktop/03_tabletax/repsetspecies.fasta"
+seqs <- readDNAStringSet(fas)
+
+fa_given_name <- names(seqs)
+
+df <- data.frame(seq_name = names(seqs))
+df$new_name <- sub(" .*", "", df$seq_name)
+
+dfnodomain <- df[!(df$new_name %in% aa$ASV),]
+dfnophylum <- df[!(df$new_name %in% bb$ASV),]
+
+seqsphylum <- seqs[names(seqs) %in% dfnophylum$seq_name]
+
+writeXStringSet(seqsphylum, "/Users/kelse/Desktop/03_tabletax/repset_newname_phylum.fasta")
+
+library(baseq)
+library(DECIPHER); packageVersion("DECIPHER")
+
+fas <- "/Users/kelse/Desktop/03_tabletax/repsetspecies.fasta"
+seqs <- readDNAStringSet(fas)
+
+fa_given_name <- names(seqs)
+
+df <- data.frame(seq_name = names(seqs))
+df$new_name <- sub(" .*", "", df$seq_name)
+names(seqs) <- df[match(fa_given_name, df$seq_name), "new_name"]
+
+seqsdomain <- seqs[names(seqs) %in% dfnodomain$seq_name]
+seqsphylum <- seqs[names(seqs) %in% dfnophylum$seq_name]
+
+writeXStringSet(seqsdomain, "/Users/kelse/Desktop/03_tabletax/repset_newname_domain.fasta")
+
+seqs
+seqs <- OrientNucleotides(seqs)
+aligned <- AlignSeqs(seqs)
+head(aligned)
+
+writeXStringSet(aligned, "/Users/kelse/Desktop/03_tabletax/aligned80.fasta")
+
+library(phangorn); packageVersion("phangorn")
+
+alignment <- read.phyDat("/Users/kelse/Desktop/03_tabletax/aligned80.fasta", format = "fasta", type = "DNA")
+
+##Alignment is an object of class phyDat
+
+baseFreq(alignment)
+glance(alignment)
+
+dm <- dist.ml(alignment)
+tree <- NJ(dm)
+write.tree(tree,"/Users/kelse/Desktop/03_tabletax/aligned.tre")
+#```
+
+
+
+Here we make the phyloseq object.
+You will need:
+- the seqtab.nochim from dada2 (this is labelled seqtab_final.rds from labs dada2 pipeline)
+    For your brain, the seqtab.rds has not had chimera removed
+- a metadata file
+- a taxa file from dada2 (with taxonomy assigned)
+
+```{r}
+library(stringr)
+#seqtab.nochim <- readRDS('/Users/kelse/Desktop/03_tabletax/seqtab_final.rds')
+#taxa <- readRDS('/Users/kelse/Desktop/03_tabletax/tax_final80b.rds')
+w_metadata <- read.delim('C:/Users/kelse/Dropbox/PhD/Papers/comparative analysis/This is legit your finalised files/All_water/metadata.txt', row.names = 1)
+
+w_otu_table_in <- read.table('C:/Users/kelse/Dropbox/PhD/Papers/comparative analysis/This is legit your finalised files/All_water/seqtab_final.txt', sep = "\t", row.names = 1, header = T)
+names(w_otu_table_in) <- gsub(x=names(w_otu_table_in), pattern = "D.", replacement = "D-")
+names(w_otu_table_in) <- gsub(x=names(w_otu_table_in), pattern = "b.2", replacement = "b-2")
+colnames(w_otu_table_in)[1] <- "34_null_P231212D-0270A"
+w_otu_table_in <- as.matrix(w_otu_table_in)
+
+
+w_taxonomy <- readDNAStringSet('C:/Users/kelse/Dropbox/PhD/Papers/comparative analysis/This is legit your finalised files/All_water/repsetspecies.fasta')
+w_taxonomy <- as.data.frame(w_taxonomy)
+w_tax <- rownames(w_taxonomy) %>% as.data.frame()
+w_tax <- str_split_fixed(w_tax$., ";", 7) %>% as.data.frame()
+w_tax1 <- str_split_fixed(w_tax$V1, " ", 2) %>% as.data.frame()
+
+w_tax <- cbind(w_tax1, w_tax)
+w_tax <- w_tax[-c(3,9)]
+row.names(w_tax) <- w_tax$V1
+w_tax <- w_tax[-c(1)]
+colnames(w_tax) <- c("Domain", "Phylum", "Class", "Order", "Family", "Genus")
+w_tax <- as.matrix(w_tax)
+
+library(ape); packageVersion("ape")
+
+w_tree <- read.tree("C:/Users/kelse/Dropbox/PhD/Papers/comparative analysis/This is legit your finalised files/All_water/aligned.tre")
+w_random_tree <- rtree(ntaxa(w_tree), rooted = T, tip.label = taxa_names(w_tree))
+
+w_ps <- phyloseq(otu_table(w_otu_table_in, taxa_are_rows=T), 
+               sample_data(w_metadata), 
+               tax_table(w_tax))
+
+w_ps <- phyloseq::subset_taxa(w_ps, Domain != "NA")
+w_ps <- phyloseq::subset_taxa(w_ps, Phylum != "NA")
+
+w_tips <- w_random_tree$tip.label
+w_tips <- as.data.frame(w_tips)
+
+w_dd <- w_tips %>% tidyr::extract(w_tips, into = c("tips", "col2"), "^(.*?_.*?)_(.*)$")
+
+w_dd <- w_dd[-c(2)]
+
+w_new_tips <- as.vector(w_dd)
+w_new_tips <- unlist(w_new_tips$tips)
+
+w_random_tree$tip.label <- w_new_tips
+
+w_ps <- merge_phyloseq(w_ps, w_random_tree)
+```
+
+```{r}
+rm(w_new_tips)
+rm(w_dd)
+rm(w_tips)
+rm(w_tax1)
+rm(w_random_tree)
+rm(w_taxonomy)
+```
+
+You have now made a phyloseq object. NOw look at whether the samples need rarefied
+
+```{r}
+w_ps <- phyloseq::subset_taxa(w_ps, Family != "Mitochondria")
+w_ps <- phyloseq::subset_taxa(w_ps, Class != "Chloroplast")
+w_ps <- phyloseq::subset_taxa(w_ps, Domain != "NA")
+
+
+sort(sample_sums(w_ps))
+
+#If I cut off the samples at 5000 reads, I will lose 8 samples. To do this, I will rarefy to 80% of 5000, so rarefy to 4000 reads
+
+w_rare_ps <- rarefy_even_depth(w_ps, 4000, rngseed = T)
+
+#11 samples removed because too low
+```
+
+
+```{r}
+alphadiversity <- plot_richness(rare_ps, x="Type", measures = c("Observed", "Shannon"))
+alphadiversity + geom_boxplot()
+alphadiversity + geom_boxplot() +stat_compare_means(method = "kruskal.test", paired = T)
+
+set.seed(1)
+
+NMDS_ord <- ordinate(rare_ps, "NMDS", "bray")
+NMDS_ord
+
+ggsave("water.png", units = "in", width = 10, height = 7)
+
+## The stress is 0.14. This is not ideal at all and the ordination is suspect
+
+plot_ordination(rare_ps, NMDS_ord, color = "Type")
+
+nmdsord <- NMDS_ord$points %>% as.data.frame()
+
+n_names <- rownames(nmdsord) %>% as.data.frame()
+m_names <- rownames(metadata) %>% as.data.frame()
+
+library(tidyr)
+library(dplyr)
+
+nmdsthing <- merge(nmdsord, metadata, by = "row.names", all.x = T)
+
+
+
+nmdsthing$Type <- as.factor(as.character(nmdsthing$Type))
+ggplot(nmdsthing, aes(x = MDS1, y = MDS2, colour = Type, shape = Type)) + geom_point() + stat_ellipse()
+withrussia <- ggplot(nmdsthing, aes(x = MDS1, y = MDS2, colour = Type, shape = Type)) + geom_point(size = 2.5) + geom_point(data = nmdsthing %>% filter(Location == "New Zealand"), color = "black") + geom_point(data = nmdsthing %>% filter(Location == "Russia"), color = "pink") + stat_ellipse() + xlab("NMDS1") + ylab("NMDS2")
+
+
+rare_ps_sinrussia <- phyloseq::subset_samples(rare_ps, Location != "Russia")
+NMDS_ord_russ <- ordinate(rare_ps_sinrussia, "NMDS", "bray")
+
+metadata_sinrussia <- subset(metadata, Location != "Russia")
+nmdsord_russ <- NMDS_ord_russ$points %>% as.data.frame()
+
+n_names_russ <- rownames(nmdsord_russ) %>% as.data.frame()
+m_names_russ <- rownames(metadata_sinrussia) %>% as.data.frame()
+nmdsthing_russ <- merge(nmdsord_russ, metadata_sinrussia, by = "row.names", all.x = T)
+
+nmdsthing_russ$Type <- as.factor(as.character(nmdsthing_russ$Type))
+ggplot(nmdsthing_russ, aes(x = MDS1, y = MDS2, colour = Type, shape = Type)) + geom_point() + stat_ellipse()
+sinrussia <- ggplot(nmdsthing_russ, aes(x = MDS1, y = MDS2, colour = Type, shape = Type)) + geom_point(size = 2.5) + geom_point(data = nmdsthing_russ %>% filter(Location == "New Zealand"), color = "black") +geom_point(data = nmdsthing_russ %>% filter(Location == "Sri Lanka"), color = "pink") + stat_ellipse() + xlab("NMDS1") + ylab("NMDS2")
+
+ggarrange(withrussia, sinrussia, ncol = 1)
+
+ggsave("plot4.png", units = "cm", width = 20, height = 15)
+
+df <- as(sample_data(rare_ps), "data.frame")
+d <- phyloseq::distance(rare_ps, "bray")
+
+library(vegan)
+
+countryad <- adonis(d ~ Type, df)
+
+countryad
+
+PCoA_ord <- ordinate(rare_ps, "DCA")
+PCoA_ord
+
+plot_ordination(rare_ps, PCoA_ord, color = "Country")
+
+```
+
+
+```{r}
+ps_country <- get_variable(rare_ps, "Project")
+
+country_ano <- anosim(phyloseq::distance(rare_ps, "bray"), ps_country)
+country_ano$signif
+
+country_ano$statistic
+```
+
+```{r}
+df <- as(sample_data(rare_ps), "data.frame")
+d <- phyloseq::distance(rare_ps, "bray")
+
+countryad <- adonis(d ~ Project, df)
+
+countryad
+```
+
+
+Continuous data
+
+```{r}
+sample_data(rare_ps)$Depth <- as.numeric(sample_data(rare_ps)$Depth)
+
+plot_richness(rare_ps, x= "Cl", measures = c("Observed", "Shannon")) + geom_point() + geom_smooth(method = lm) + geom_cor(method = "spearman") 
+
+pH_shannon <- cor.test()
+```
+Look at making a genus table ##I actually make a family table
+```{r}
+genus <- tax[,c(5)] %>% as.data.frame()
+
+genus <- merge(genus, otu_table_in, by = 0, all = T)
+genus <- genus[-c(1)]
+
+genus[genus == "NA"] <- "Undefined"
+genus$. <- as.factor(as.character(genus$.))
+genus <- genus %>% mutate(across(-c(.), as.numeric))
+colnames(genus)[1] <- "Family"
+
+genus <- aggregate(. ~ Family, genus, sum)
+
+rownames(genus) <- genus[,1]
+genus <- genus[-c(1)]
+```
+
+
+
+```{r}
+data("varespec")
+library(MASS)
+
+genus <- t(genus)
+
+ord <- metaMDS(genus, distance = "bray", k=2)
+ord
+
+pc <- vegdist(genus, method = "bray")
+
+pcopp <- pcoa(pc)
+
+biplot(pcopp)
+
+```
+
+```{r}
+boots <- read.delim('/Users/kelse/Desktop/16Sdata/Altered bootstrap final/Finalised all/03_tabletax/tax_80boot.txt')
+rownames(boots) <- boots[,1]
+boots <- boots[c(9, 15)]
+
+boots$tax.Genus <- as.factor(as.character(boots$tax.Genus))
+boots$boot.Genus <- as.numeric(as.character(boots$boot.Genus))
+
+subboot <- boots[rowSums(is.na(boots))>0,]
+suubgen <- boots %>% drop_na()
+sublow <- subboot %>% subset(subboot$boot.Genus >= 80)
+subhigh <- subboot %>% subset(subboot$boot.Genus <= 79)
+
+sublow$tax.Genus <- "unclassified" 
+subhigh$tax.Genus <- "undefined"
+
+bootstrapgenus <- rbind(sublow, subhigh, suubgen)
+
+```
+
+```{r}
+genus <- bootstrapgenus[c(1)] %>% as.data.frame()
+
+genus <- merge(genus, otu_table_in, by = 0, all = T)
+genus <- genus[-c(1)]
+
+genus$tax.Genus <- as.factor(as.character(genus$tax.Genus))
+genus <- genus %>% mutate(across(-c(tax.Genus), as.numeric))
+colnames(genus)[1] <- "Genus"
+
+genus <- aggregate(. ~ Genus, genus, sum)
+
+rownames(genus) <- genus[,1]
+genus <- genus[-c(1)]
+
+genus <- t(genus)
+
+
+ord <- metaMDS(genus, distance = "bray", k=2)
+ord
+
+pc <- vegdist(genus, method = "bray")
+
+pcopp <- pcoa(pc)
+
+biplot(pcopp)
+biplot.pcoa(pcopp)
+
+a <- pcopp$vectors %>% as.data.frame()
+a <- a[c(1:2)]
+
+rownames(a)[rownames(a)=="34_null_P231212D-0270A"] <- "34_null_P231212D-0270A "
+rownames(a)[rownames(a)=="T32b.2_null_P231212D-0285A"] <- "T32b-2_null_P231212D-0285A"
+
+
+vecmeta <- merge(a, metadata, by = 0, all = T)
+rownames(vecmeta) <- vecmeta[,1]
+vecmeta <- vecmeta[-c(1)]
+
+ggplot(vecmeta, aes(x = Axis.1, y = Axis.2, color = Region)) + geom_point()
+```
+
+```{r}
+w_ordpcw <- ordinate(w_rare_ps, "PCoA", "unifrac", weighted = T)
+w_ordpcunw <- ordinate(w_rare_ps, "PCoA", "unifrac", weighted = F)
+
+plot_ordination(w_rare_ps, w_ordpcw, color = "Type") + geom_point(size = 3) + theme(legend.position = "bottom") + guides(color = guide_legend(nrow = 3, byrow = T), shape = guide_legend(nrow = 3, byrow = T))
+plot_ordination(w_rare_ps, w_ordpcunw, color = "Type") + geom_point(size = 3) 
+
+orw <- ordpcw$values %>% as.data.frame()
+
+n_names <- rownames(nmdsord) %>% as.data.frame()
+m_names <- rownames(metadata) %>% as.data.frame()
+
+aa <- plot_ordination(rare_ps, ordpcw, justDF = T)
+aa <- aa[-c(3,4)]
+bb <- plot_ordination(rare_ps, ordpcunw, justDF = T)
+bb <- bb[-c(3,4)]
+
+colnames(aa) <- c("Axis_1_w", "Axis_2_w")
+colnames(bb) <- c("Axis_1_unw", "Axis_2_unw")
+
+ordination <- cbind(aa, bb)
+
+ordination <- merge(ordination, metadata, by = "row.names", all.x = T)
+
+
+
+ordination$Type <- as.factor(as.character(ordination$Type))
+
+plot_ordination(rare_ps, ordpcw, color = "Type") + geom_point(size = 3) + theme(legend.position = "bottom") + guides(color = guide_legend(nrow = 3, byrow = T), shape = guide_legend(nrow = 3, byrow = T))
+plot_ordination(rare_ps, ordpcunw, color = "Type") + geom_point(size = 3)
+
+Unw <-  ggplot(ordination, aes(x = Axis_1_unw, y = Axis_2_unw, colour = Type, shape = Type)) + geom_point(size = 2.5) + geom_point(data = ordination %>% filter(Location == "New Zealand"), color = "black") + stat_ellipse() + ylab("Axis 2 7.3%") + xlab("Axis 1 12.3%") + theme(legend.position = "bottom") + guides(color = guide_legend(nrow = 1, byrow = T), shape = guide_legend(nrow = 3, byrow = T))
+
+w <- ggplot(ordination, aes(x = Axis_1_w, y = Axis_2_w, colour = Type, shape = Type)) + geom_point(size = 2.5) + geom_point(data = ordination %>% filter(Location == "New Zealand"), color = "black") + stat_ellipse() + xlab("Axis 1 16%") + ylab("Axis 2 9%") + theme(legend.position = "none")
+
+library(ggpubr)
+
+ggarrange(Unw, w, ncol = 1, labels = c("A", "B"))
+ggsave("plot4.png", units = "cm", width = 25, height = 30)
+
+Unw <-  ggplot(ordination, aes(x = Axis_1_unw, y = Axis_2_unw, colour = Type, shape = Type)) + geom_point(size = 2.5, alpha = 0.7) + stat_ellipse() + ylab("Axis 2 7.3%") + xlab("Axis 1 12.3%") + theme(legend.position = "bottom") + guides(color = guide_legend(nrow = 1, byrow = T), shape = guide_legend(nrow = 3, byrow = T))
+Unw
+
+ordination$Type <- factor(ordination$Type, exclude = "Lake")
+ordination <- na.omit(ordination)
+ordination$Type <- factor(ordination$Type, levels = c("Ocean", "Geothermal","Sea",  "Hydrocarbon" ))
+
+ordination2 <- ordination %>%  subset(Location == "New Zealand")
+ordination2 <- ordination2 %>% subset(Type == "Hydrocarbon")
+
+ordination_hc_gt <- ordination %>%  subset(Type == "Hydrocarbon" | Type == "Geothermal")
+ordination_hc_gt <- ordination_hc_gt %>%  subset(! Location == "Russia")
+
+ww <- ggplot(ordination_hc_gt, aes(x = Axis_1_unw, y = Axis_2_unw, colour = Type, shape = Type)) + geom_point(size = 3) + stat_ellipse() + ylab("Axis 2 7.3%") + xlab("Axis 1 12.3%") + theme_classic() + theme(legend.position = "bottom") + guides(color = guide_legend(nrow = 2, byrow = T), shape = guide_legend(nrow = 3, byrow = T)) + theme(axis.text.x = element_text(size = 6.5), axis.text.y = element_text(size = 6.5), axis.title.x = element_text(size = 7), axis.title.y = element_text(size = 7), legend.text=element_text(size=7))  + geom_point(data = ordination_hc_gt %>% filter(Location == "New Zealand"), color = "black", alpha = 0.75) + ggtitle("Unweighted - Subset original") + theme(legend.position = "none")
+
+xx <- ggplot(ordination_hc_gt, aes(x = Axis_1_w, y = Axis_2_w, colour = Type, shape = Type)) + geom_point(size = 3) + stat_ellipse() + ylab("Axis 2 7.3%") + xlab("Axis 1 12.3%") + theme_classic() + theme(legend.position = "bottom") + guides(color = guide_legend(nrow = 2, byrow = T), shape = guide_legend(nrow = 3, byrow = T)) + theme(axis.text.x = element_text(size = 6.5), axis.text.y = element_text(size = 6.5), axis.title.x = element_text(size = 7), axis.title.y = element_text(size = 7), legend.text=element_text(size=7))  + geom_point(data = ordination_hc_gt %>% filter(Location == "New Zealand"), color = "black", alpha = 0.75) + ggtitle("Weighted - Subset Original") + theme(legend.position = "none")
+
+library(wesanderson)
+library(RColorBrewer)
+library(ggsci)
+
+ggplot(ordination, aes(x = Axis_1_unw, y = Axis_2_unw, colour = Type, shape = Type)) + geom_point(size = 1) + stat_ellipse() + ylab("Axis 2 7.3%") + xlab("Axis 1 12.3%") + theme_classic() + theme(legend.position = "bottom") + guides(color = guide_legend(nrow = 2, byrow = T), shape = guide_legend(nrow = 3, byrow = T)) + theme(axis.text.x = element_text(size = 6.5), axis.text.y = element_text(size = 6.5), axis.title.x = element_text(size = 7), axis.title.y = element_text(size = 7), legend.text=element_text(size=7)) + scale_color_startrek() + geom_point(data = ordination2 %>% filter(Location == "New Zealand"), color = "black", alpha = 0.5)
+
+ggsave("just_unw_sin_lake.png", units = "cm", width = 8, height = 9.5)
+
+```
+Subset hydrocarbon and geothermal and the re-ordinate
+```{r}
+ps_rare_subset <- subset_samples(rare_ps, Type == "Hydrocarbon" | Type == "Geothermal")
+ps_rare_subset <- phyloseq::subset_samples(ps_rare_subset, Location != "Russia")
+
+ordpcw_sub <- ordinate(ps_rare_subset, "PCoA", "unifrac", weighted = T)
+ordpcunw_sub <- ordinate(ps_rare_subset, "PCoA", "unifrac", weighted = F)
+
+aaaa <- plot_ordination(ps_rare_subset, ordpcw_sub, justDF = T)
+aaaa <- aaaa[-c(3,4)]
+bbbb <- plot_ordination(ps_rare_subset, ordpcunw_sub, justDF = T)
+bbbb <- bbbb[-c(3,4)]
+
+colnames(aaaa) <- c("Axis_1_w", "Axis_2_w")
+colnames(bbbb) <- c("Axis_1_unw", "Axis_2_unw")
+
+ordination_sub <- cbind(aaaa, bbbb)
+
+ordination_sub <- merge(ordination_sub, metadata, by = "row.names", all.x = T)
+
+yy <- ggplot(ordination_sub, aes(x = Axis_1_unw, y = Axis_2_unw, colour = Type, shape = Type)) + geom_point(size = 3) + stat_ellipse() + ylab("Axis 2 5.5%") + xlab("Axis 1 7.4%") + theme_classic() + theme(legend.position = "bottom") + guides(color = guide_legend(nrow = 2, byrow = T), shape = guide_legend(nrow = 3, byrow = T)) + theme(axis.text.x = element_text(size = 6.5), axis.text.y = element_text(size = 6.5), axis.title.x = element_text(size = 7), axis.title.y = element_text(size = 7), legend.text=element_text(size=7))  + geom_point(data = ordination_sub %>% filter(Location == "New Zealand"), color = "black", alpha = 0.75) + ggtitle("Unweighted - New Ordination") + theme(legend.position = "none")
+
+zz <- ggplot(ordination_sub, aes(x = Axis_1_w, y = Axis_2_w, colour = Type, shape = Type)) + geom_point(size = 3) + stat_ellipse() + ylab("Axis 2 9.5%") + xlab("Axis 1 12.2%") + theme_classic() + theme(legend.position = "bottom") + guides(color = guide_legend(nrow = 2, byrow = T), shape = guide_legend(nrow = 3, byrow = T)) + theme(axis.text.x = element_text(size = 6.5), axis.text.y = element_text(size = 6.5), axis.title.x = element_text(size = 7), axis.title.y = element_text(size = 7), legend.text=element_text(size=7))  + geom_point(data = ordination_sub %>% filter(Location == "New Zealand"), color = "black", alpha = 0.75) + ggtitle("Weighted - New Ordination") + theme(legend.position = "none")
+
+ggarrange(ww, xx, yy, zz, ncol = 2, nrow = 2)
+
+```
+
+
+
+
+
+Here I want to align just the geothermal and hydrocarbon
+
+I need to:
+- subset only geothermal and hydrocarbon
+- remove any ASV's from the OTU_table file
+- THEN remove these ASV's from taxonomy file
+- THEN run your alrignment
+```{r}
+
+metadata <- read.delim('/Users/kelse/Desktop/03_tabletax/metadata.txt', row.names = 1)
+meta <- metadata %>% subset(Type == "Geothermal" | Type == "Hydrocarbon")
+meta <- meta %>% t() %>% as.data.frame()
+
+otu_table_in <- read.table('/Users/kelse/Desktop/03_tabletax/seqtab_final.txt', sep = "\t", row.names = 1, header = T)
+names(otu_table_in) <- gsub(x=names(otu_table_in), pattern = "D.", replacement = "D-")
+names(otu_table_in) <- gsub(x=names(otu_table_in), pattern = "b.2", replacement = "b-2")
+colnames(otu_table_in)[1] <- "34_null_P231212D-0270A"
+otu_table_in <- as.matrix(otu_table_in)
+
+
+filt_otu <- otu_table_in[, colnames(meta)]
+filt_zero <- filt_otu[apply(filt_otu[,-1], 1, function(x) !all(x==0)),]
+filt_zero <- as.data.frame(filt_zero)
+filt_zero <- as.matrix(filt_zero)
+filt_zero$ASV <- rownames(filt_zero)
+
+fas <- "/Users/kelse/Desktop/03_tabletax/repsetspecies.fasta"
+seqs <- readDNAStringSet(fas)
+
+fa_given_name <- names(seqs)
+
+df <- data.frame(seq_name = names(seqs))
+df$new_name <- sub(" .*", "", df$seq_name)
+
+dfnodomain <- df[(df$new_name %in% filt_zero$ASV),]
+
+seqsphylum <- seqs[names(seqs) %in% dfnodomain$seq_name]
+
+writeXStringSet(seqsphylum, "/Users/kelse/Desktop/03_tabletax/repset_hydro_geothermal.fasta")
+
+library(baseq)
+library(DECIPHER); packageVersion("DECIPHER")
+
+seqsphylum
+seqs <- seqsphylum
+seqs <- OrientNucleotides(seqs)
+aligned <- AlignSeqs(seqs)
+head(aligned)
+
+writeXStringSet(aligned, "/Users/kelse/Desktop/03_tabletax/aligned_hydro_geothermal.fasta")
+
+library(phangorn); packageVersion("phangorn")
+
+alignment <- read.phyDat("/Users/kelse/Desktop/03_tabletax/aligned_hydro_geothermal.fasta", format = "fasta", type = "DNA")
+
+##Alignment is an object of class phyDat
+
+baseFreq(alignment)
+glance(alignment)
+
+dm <- dist.ml(alignment)
+tree <- NJ(dm)
+write.tree(tree,"/Users/kelse/Desktop/03_tabletax/aligned.tre")
+```
+
+```{r}
+library(stringr)
+#seqtab.nochim <- readRDS('/Users/kelse/Desktop/03_tabletax/seqtab_final.rds')
+#taxa <- readRDS('/Users/kelse/Desktop/03_tabletax/tax_final80b.rds')
+metadata <- read.delim('/Users/kelse/Desktop/03_tabletax/metadata.txt', row.names = 1)
+
+
+names(filt_zero) <- gsub(x=names(filt_zero), pattern = "D.", replacement = "D-")
+names(filt_zero) <- gsub(x=names(filt_zero), pattern = "b.2", replacement = "b-2")
+#colnames(otu_table_in)[1] <- "34_null_P231212D-0270A"
+filt_zero$ASV <- rownames(filt_zero)
+filt_zero <- as.matrix(filt_zero)
+
+tax_hc_gt <- tax
+tax_hc_gt$ASV <- rownames(tax_hc_gt)
+
+tax_hc_gt <- tax_hc_gt[(tax_hc_gt$ASV %in% filt_zero$ASV),]
+tax_hc_gt <- tax_hc_gt[-c(7)]
+
+filt_zero <- filt_zero[-c(166)]
+filt_zero <- as.matrix(filt_zero)
+
+meta <- meta %>% t() %>% as.data.frame()
+
+meta <- meta %>% as.data.frame()
+tax_hc_gt <- tax_hc_gt %>% as.matrix()
+
+library(ape); packageVersion("ape")
+
+tree_hc_gt <- read.tree("/Users/kelse/Desktop/03_tabletax/aligned_hydro_geotherm.tre")
+random_tree_hc_gt <- rtree(ntaxa(tree_hc_gt), rooted = T, tip.label = taxa_names(tree_hc_gt))
+
+
+##Both otu_table (filt_zero) and taxonomy (tax_hc_gt) must be matrices
+ps_hc_gt <- phyloseq(otu_table(filt_zero, taxa_are_rows=T), 
+               sample_data(meta), 
+               tax_table(tax_hc_gt))
+
+ps <- phyloseq::subset_taxa(ps, Domain != "NA")
+ps <- phyloseq::subset_taxa(ps, Phylum != "NA")
+
+tips_hc_gt <- random_tree_hc_gt$tip.label
+tips_hc_gt <- as.data.frame(tips_hc_gt)
+
+dd <- tips_hc_gt %>% tidyr::extract(tips_hc_gt, into = c("tips", "col2"), "^(.*?_.*?)_(.*)$")
+
+dd <- dd[-c(2)]
+
+new_tips <- as.vector(dd)
+new_tips <- unlist(new_tips$tips)
+
+random_tree_hc_gt$tip.label <- new_tips
+
+ps_hc_gt <- merge_phyloseq(ps_hc_gt, random_tree_hc_gt)
+```
+
+```{r}
+ps_hc_gt <- phyloseq::subset_taxa(ps_hc_gt, Family != "Mitochondria")
+ps_hc_gt <- phyloseq::subset_taxa(ps_hc_gt, Class != "Chloroplast")
+ps_hc_gt <- phyloseq::subset_taxa(ps_hc_gt, Domain != "NA")
+ps_hc_gt <- phyloseq::subset_samples(ps_hc_gt, Location != "Russia")
+
+
+sort(sample_sums(ps_hc_gt))
+
+#If I cut off the samples at 5000 reads, I will lose 8 samples. To do this, I will rarefy to 80% of 5000, so rarefy to 4000 reads
+
+rare_ps_hc_gt <- rarefy_even_depth(ps_hc_gt, 4000, rngseed = T)
+```
+
+```{r}
+ordpcw_hc_gt <- ordinate(rare_ps_hc_gt, "PCoA", "unifrac", weighted = T)
+ordpcunw_hc_gt <- ordinate(rare_ps_hc_gt, "PCoA", "unifrac", weighted = F)
+
+
+
+aa <- plot_ordination(rare_ps_hc_gt, ordpcw_hc_gt, justDF = T)
+aa <- aa[-c(3,4)]
+bb <- plot_ordination(rare_ps_hc_gt, ordpcunw_hc_gt, justDF = T)
+bb <- bb[-c(3,4)]
+
+colnames(aa) <- c("Axis_1_w", "Axis_2_w")
+colnames(bb) <- c("Axis_1_unw", "Axis_2_unw")
+
+ordination_hc_gt_2 <- cbind(aa, bb)
+
+ordination_hc_gt_2 <- merge(ordination_hc_gt_2, meta, by = "row.names", all.x = T)
+
+
+
+ordination_hc_gt_2$Type <- as.factor(as.character(ordination_hc_gt_2$Type))
+
+wxy <- ggplot(ordination_hc_gt_2, aes(x = Axis_1_unw, y = Axis_2_unw, colour = Type, shape = Type)) + geom_point(size = 2.5) + geom_point(data = ordination_hc_gt_2 %>% filter(Location == "New Zealand"), color = "black") + stat_ellipse() + ylab("Axis 2 5.1%") + xlab("Axis 1 6.9%") + theme(legend.position = "bottom") + guides(color = guide_legend(nrow = 1, byrow = T), shape = guide_legend(nrow = 3, byrow = T)) + ggtitle("Unweighted - New Alignment")
+
+xyz <- ggplot(ordination_hc_gt_2, aes(x = Axis_1_w, y = Axis_2_w, colour = Type, shape = Type)) + geom_point(size = 2.5) + geom_point(data = ordination_hc_gt_2 %>% filter(Location == "New Zealand"), color = "black") + stat_ellipse() + xlab("Axis 1 14.5%") + ylab("Axis 2 10.1%") + theme(legend.position = "none") + ggtitle("Weighted - New Alignment")
+
+ggarrange(ww, xx, yy, zz, wxy, xyz, ncol = 2, nrow = 3)
+
+ggsave("comparison_hycrobarcon_geothermal_diff_methods.png", units = "in", width = 10, height = 9)
+```
+
+

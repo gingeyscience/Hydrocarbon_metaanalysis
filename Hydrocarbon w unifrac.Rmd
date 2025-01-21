@@ -1,0 +1,336 @@
+---
+title: "phyloseq"
+output: html_document
+date: "2024-05-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This is a pipleine using phyloseq
+
+```{r}
+library(ggplot2); packageVersion("ggplot2")
+library(phyloseq); packageVersion("phyloseq")
+library(Biostrings); packageVersion("Biostrings")
+library(ranacapa); packageVersion("ranacapa")
+library(microbiome); packageVersion("microbiome")
+library(ggpubr); packageVersion("ggpubr")
+library(DEGreport); packageVersion("DEGreport")
+library(ape); packageVersion("ape")
+library(dplyr)
+library(stringr)
+library(vegan)
+```
+
+You have already done the tree building so you can go straight into analysis here
+
+
+```{r}
+set.seed(1234)
+
+tree <- read.tree("C:/Users/kelse/Dropbox/PhD/Papers/comparative analysis/This is legit your finalised files/Int_hydrocarbon/aligned.tre")
+random_tree <- rtree(ntaxa(tree), rooted = T, tip.label = taxa_names(tree))
+
+#When you read in the OTU table, samnple with D- are replaced with D. so you need to correct this.
+#additionally, when you read in the table, the first column adds an X which need to be removed
+#If you don't do this, you are not able to make your phyloseq object xoxo
+
+otu_table_in <- read.table('C:/Users/kelse/Dropbox/PhD/Papers/comparative analysis/This is legit your finalised files/Int_hydrocarbon/seqtab_final80.txt', sep = "\t", row.names = 1, header = T)
+names(otu_table_in) <- gsub(x=names(otu_table_in), pattern = "D.", replacement = "D-")
+colnames(otu_table_in)[1] <- "34_null_P231212D-0270A"
+
+#format isnt right for phyloseq object an dyou have an additional, unnecessary column. This foxes it all and converts into matric for phyloseq. This also makes ASV number as the rowname which is for phyloseq
+
+taxonomy <- readDNAStringSet('C:/Users/kelse/Dropbox/PhD/Papers/comparative analysis/This is legit your finalised files/Int_hydrocarbon/repset80.fasta')
+taxonomy <- as.data.frame(taxonomy)
+tax <- rownames(taxonomy) %>% as.data.frame()
+tax <- stringr::str_split_fixed(tax$., ";", 7) %>% as.data.frame()
+tax1 <- str_split_fixed(tax$V1, " ", 2) %>% as.data.frame()
+tax <- cbind(tax1, tax)
+tax <- tax[-c(3,9)]
+row.names(tax) <- tax$V1
+tax <- tax[-c(1)]
+colnames(tax) <- c("Domain", "Phylum", "Class", "Order", "Family", "Genus")
+tax <- as.matrix(tax)
+
+#Remove SRR14410552 as this sample does not make it through DADA2
+
+metadata <- read.delim('C:/Users/kelse/Dropbox/PhD/Papers/comparative analysis/This is legit your finalised files/Int_hydrocarbon/final_metadata.txt', row.names = 1)
+metadata <- metadata[row.names(metadata) != "SRR14410552", , drop = F]
+
+
+phylo <- phyloseq(otu_table(otu_table_in, taxa_are_rows=T), 
+               sample_data(metadata), 
+               tax_table(tax),
+               phy_tree(random_tree))
+
+#bbb <- UniFrac(phyphyphy)
+
+
+phylo <- phyloseq::subset_taxa(phylo, Family != "Mitochondria")
+#Removes 129
+phylo <- phyloseq::subset_taxa(phylo, Class != "Chloroplast")
+#Removes 115
+phylo <- phyloseq::subset_taxa(phylo, Domain != "NA")
+#Removes 81
+phylo <- phyloseq::subset_taxa(phylo, Domain != "Eukaryota")
+#Removes 19
+
+sort(sample_sums(phylo))
+
+##Rerefy to 4000, of the 108 samples, 7 are lost(ASV count): (SRR15014597(889), SRR15014593(1424), SRR13192706(1635), SRR11284351(2093), SRR15014596(2655), SRR15014595(3039), SRR14410554(3145))
+
+rarephy <- rarefy_even_depth(phylo, 4000, rngseed = T)
+
+#Tidy up
+
+rm(tax1)
+rm(taxonomy)
+
+
+
+ordpcw <- ordinate(rarephy, "PCoA", "unifrac", weighted = T)
+ordpcunw <- ordinate(rarephy, "PCoA", "unifrac", weighted = F)
+ordpcwnmds <- ordinate(rarephy, "NMDS", "unifrac", weighted = T)
+ordpcunwnmds <- ordinate(rarephy, "NMDS", "unifrac", weighted = F)
+
+ordpcwnmds
+#Stress = 0.159
+ordpcunwnmds
+#Stress = 0.224
+
+pc_w <- plot_ordination(rarephy, ordpcw, color = "Country", shape = "Type") + geom_point(size = 3) + theme(legend.position = "bottom") + guides(color = guide_legend(nrow = 2, byrow = T), shape = guide_legend(nrow = 1, byrow = T)) + ggtitle("Weighted")
+pc_unw <- plot_ordination(rarephy, ordpcunw, color = "Country", shape = "Type") + geom_point(size = 3) + theme(legend.position = "none") + ggtitle("Unweighted")
+
+ggarrange(pc_w, pc_unw, nrow = 2, labels = c("A", "B"))
+
+ggsave("C:/Users/kelse/Dropbox/PhD/Papers/comparative analysis/This is legit your finalised files/Int_hydrocarbon/pcoa_plot.png", units = "cm", width = 25, height = 30)
+
+```
+
+In the weighted plot, there are three points that are found with the NZ samples, I want to know what ASV is pulling them out this way.
+In the unweighted plot there is nothing pulling any other international samples into the NZ samples. 
+
+```{r}
+ordpcw_scores <- plot_ordination(rarephy, ordpcw, justDF = T)
+ordpcw_scores <- ordpcw_scores[c(1,2)]
+ordpcunw_scores <- plot_ordination(rarephy, ordpcunw, justDF = T)
+ordpcunw_scores <- ordpcunw_scores[c(1,2)]
+```
+
+SRR14410553 is found inside the NZ weighted samples
+
+What does the distibution of archaea/bacteria look like across countries/studies?
+
+```{r}
+domain_info <- rarephy %>% tax_glom(taxrank = "Domain") %>% transform_sample_counts(function(x) {x/sum(x)}) %>% psmelt() %>% dplyr::arrange(Domain)
+
+ggplot(domain_info, aes(x = Type, y = Abundance, fill  = Domain)) + geom_bar(stat="identity", position = "fill") + scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Country, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))  + ggtitle("Relative abundance of phylum > 1.5%")
+```
+
+
+
+```{r}
+alphadiversity <- plot_richness(rarephy, x="Country", measures = c("Observed", "Shannon"))
+alphadiversity + geom_boxplot()
+alphadiversity + geom_boxplot() +stat_compare_means(method = "kruskal.test", paired = T)
+
+
+NMDS_ord <- ordinate(rare_ps, "NMDS", "bray")
+NMDS_ord
+
+## The stress is 0.259. This is not ideal at all and the ordination is suspect
+
+plot_ordination(rare_ps, NMDS_ord, color = "Reservoir") + stat_ellipse() + annotate(geom = "text", label ="Stress, 0.26", x = -0.55, y = 0.85)
+
+
+
+PCoA_ord <- ordinate(rare_ps, "DCA")
+PCoA_ord
+
+plot_ordination(rare_ps, PCoA_ord, color = "Country")
+```
+
+
+```{r}
+ps_country <- get_variable(rare_ps, "Project")
+
+country_ano <- anosim(phyloseq::distance(rare_ps, "bray"), ps_country)
+country_ano$signif
+
+country_ano$statistic
+```
+
+```{r}
+df <- as(sample_data(rare_ps), "data.frame")
+d <- phyloseq::distance(rare_ps, "bray")
+
+countryad <- adonis(d ~ Project, df)
+
+countryad
+```
+
+
+Continuous data
+
+```{r}
+sample_data(rare_ps)$Depth <- as.numeric(sample_data(rare_ps)$Depth)
+
+plot_richness(rare_ps, x= "Cl", measures = c("Observed", "Shannon")) + geom_point() + geom_smooth(method = lm) + geom_cor(method = "spearman") 
+
+pH_shannon <- cor.test()
+```
+Look at making a genus table ##I actually make a family table
+```{r}
+genus <- tax[,c(5)] %>% as.data.frame()
+
+genus <- merge(genus, otu_table_in, by = 0, all = T)
+genus <- genus[-c(1)]
+
+genus[genus == "NA"] <- "Undefined"
+genus$. <- as.factor(as.character(genus$.))
+genus <- genus %>% mutate(across(-c(.), as.numeric))
+colnames(genus)[1] <- "Family"
+
+genus <- aggregate(. ~ Family, genus, sum)
+
+rownames(genus) <- genus[,1]
+genus <- genus[-c(1)]
+```
+
+
+
+```{r}
+data("varespec")
+library(MASS)
+
+genus <- t(genus)
+
+ord <- metaMDS(genus, distance = "bray", k=2)
+ord
+
+pc <- vegdist(genus, method = "bray")
+
+pcopp <- pcoa(pc)
+
+biplot(pcopp)
+
+```
+
+
+
+
+Core microbiome
+```{r}
+library(microbiome)
+library(devtools)
+
+data("peerj32")
+
+pseq.rel <- microbiome::transform(rarephy, "compositional")
+
+aa <- prevalence(pseq.rel, detection = 1/100, sort = T, count = T) %>% as.data.frame()
+
+core.taxa.standard <- core_members(pseq.rel, detection = 0, prevalence = 50/100)
+
+
+core.taxa.standard <- core_members(pseq.rel, detection = 0.0000001, prevalence = 50/100)
+
+core.taxa.standard
+
+taxa_names(rarephy)
+
+```
+
+```{r}
+library(data.table)
+
+phylum_plot0.1 <- rarephy %>% tax_glom(taxrank = "Genus") %>% transform_sample_counts(function(x) {x/sum(x)}) %>% psmelt() %>% dplyr::filter(Abundance > 0.01) %>% dplyr::arrange(Phylum)
+
+
+
+setDT(phylum_plot0.1)
+phylum_plot0.1[Domain == "Archaea", Phylum := paste0("A_", Phylum)]
+
+ggplot(phylum_plot0.1, aes(x = Phylum, y = Abundance, fill  = Phylum)) + geom_boxplot(show.legend = F)+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Country, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))  + ggtitle("Relative abundance of phylum > 1.5%")
+
+genus_plot0.5 <- rare_ps %>% tax_glom(taxrank = "Genus") %>% transform_sample_counts(function(x) {x/sum(x)}) %>% psmelt() %>% filter(Abundance > 0.05) %>% arrange(Phylum)
+
+setDT(genus_plot0.5)
+
+genus_plot0.5[Domain == "Archaea", Genus := paste0("A_", Genus)]
+
+
+genus_plot0.5$Genus[which(genus_plot0.5$Genus == "Burkholderia-Caballeronia-Paraburkholderia")] <-  "BCP"
+
+ggplot(phylum_plot0.1, aes(x = Phylum, y = Abundance, fill  = Phylum)) + geom_bar(stat = "identity", position = "dodge", show.legend = F)+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Well, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))  + ggtitle("Relative abundance of phylum > 1.5%")
+
+ggplot(genus_plot0.5, aes(x = Genus, y = Abundance, fill  = Phylum)) + geom_bar(stat = "identity", position = "dodge")+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Well, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 13)) +scale_fill_manual(values = c("#999999", "#00AFBB", "#E7B800", "#2D2D2D" ))
+
+r_abundance <- ggarrange(phylum_0.1, genus_0.5, ncol = 1)
+
+blank <- ggplot() + geom_blank() + theme_void()
+alpha <- ggarrange(observed_alpha, shannon_alpha, blank, blank, nrow = 2, ncol = 2)
+alpha1 <- ggarrange(observed_alpha, shannon_alpha, nrow = 2, ncol = 1)
+
+
+ggarrange(alpha1, r_abundance)
+ggarrange(arranged_alpha, phylum_0.1, genus_0.5, ncol = 1, heights = c(1.5,1.75,1.75), widths = 1.5, labels = c("A", "B", "C"))
+
+#ggsave("plot1.png", units = "cm", width = 20, height = 30)
+```
+
+Subset USA and NZ and look at the intersecting abundance based on the PCoA plot
+
+```{r}
+phylum_plotsub <-phylum_plot0.1 %>% subset(Country == "USA" | Country == "NZ") 
+
+ggplot(phylum_plotsub, aes(x = Phylum, y = Abundance, fill  = Phylum)) + geom_boxplot(show.legend = F)+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Sample, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))  + ggtitle("Relative abundance of phylum > 1.5%")
+
+sub2 <- phylum_plotsub %>% subset(Project == "Mine" | Project == "PRJNA611830") 
+ggplot(sub2, aes(x = Phylum, y = Abundance, fill  = Phylum)) + geom_boxplot(show.legend = F)+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~sample_Sample, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))  + ggtitle("Relative abundance of phylum > 1.5%")
+```
+
+```{r}
+total_abundance <- rarephy %>% tax_glom(taxrank = "Genus") %>% transform_sample_counts(function(x) {x/sum(x)}) %>% psmelt() %>% dplyr::arrange(Phylum)
+
+setDT(total_abundance)
+total_abundance[Domain == "Archaea", Phylum := paste0("A_", Phylum)]
+
+total_sub <-total_abundance %>% subset(Country == "USA" | Country == "NZ") 
+
+ggplot(total_sub, aes(x = Phylum, y = Abundance, fill  = Phylum)) + geom_boxplot(show.legend = F)+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Project, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))  + ggtitle("Relative abundance of phylum > 1.5%")
+
+sub1 <- total_sub %>% subset(Project == "Mine" | Project == "PRJNA611830") 
+ggplot(sub1, aes(x = Phylum, y = Abundance, fill  = Phylum)) + geom_boxplot(show.legend = F)+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Project, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))  + ggtitle("Relative abundance of phylum > 1.5%")
+```
+SRR14410553
+
+```{r}
+total_sub_top <-total_abundance %>% subset(Sample == "Sid2_null_P231212D-0287A" | Sample == "Sid1_null_P231212D-0266A" | Sample == "T6d_null_P231212D-0281A" | Sample == "T6_null_P231212D-0283A" | Sample == "T6a_null_P231212D-0282A" | Sample == "T6b_null_P231212D-0288A" | Sample == "T32e_null_P231212D-0271A" | Sample == "T35b_null_P231212D-0265A" | Sample == "SRR14410553")
+
+ggplot(total_sub_top, aes(x = Genus, y = Abundance, fill  = Phylum)) + geom_boxplot(show.legend = F)+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Project, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))  + ggtitle("Relative abundance of phylum > 1.5%")
+
+caminicella <- total_abundance %>% subset(Genus == "Caminicella")
+
+
+total_sub_top <-total_abundance %>% subset(Sample == "T34a_null_P231212D-0264A" | Sample == "T34f_null_P231212D-0280A" | Sample == "T32a_null_P231212D-0286A" | Sample == "T34c_null_P231212D-0276A" | Sample == "T32b_null_P231212D-0274A" | Sample == "T34e_null_P231212D-0275A" | Sample == "T34h_null_P231212D-0269A" | Sample == "T34b_null_P231212D-0273A" | Sample == "T34d_null_P231212D-0284A" | Sample == "SRR11284354")
+
+ggplot(total_sub_top, aes(x = Genus, y = Abundance, fill  = Phylum)) + geom_boxplot(show.legend = F)+ scale_y_continuous() + ylab("Relative Abundance") + facet_grid(~Project, scales = "free_x", space = "free_x") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))  + ggtitle("Relative abundance of phylum > 1.5%")
+```
+
+
+
+

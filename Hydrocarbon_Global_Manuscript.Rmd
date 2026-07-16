@@ -1,0 +1,163 @@
+---
+title: "phyloseq"
+output: html_document
+date: "2024-05-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This is a pipleine using phyloseq
+
+```{r}
+library(ggplot2); packageVersion("ggplot2")
+library(phyloseq); packageVersion("phyloseq")
+library(Biostrings); packageVersion("Biostrings")
+library(ranacapa); packageVersion("ranacapa")
+library(microbiome); packageVersion("microbiome")
+library(ggpubr); packageVersion("ggpubr")
+library(DEGreport); packageVersion("DEGreport")
+library(ape); packageVersion("ape")
+library(dplyr)
+library(stringr)
+library(vegan)
+```
+
+You have already done the tree building so you can go straight into analysis here
+
+
+```{r}
+set.seed(1234)
+
+tree <- read.tree("~/Int_hydrocarbon/aligned_hydrocarbon.tre")
+random_tree <- rtree(ntaxa(tree), rooted = T, tip.label = taxa_names(tree))
+tips <- random_tree$tip.label
+tips <- as.data.frame(tips)
+
+dd <- tips %>% tidyr::extract(tips, into = c("tips", "col2"), "^(.*?_.*?)_(.*)$")
+
+dd <- dd[-c(2)]
+
+new_tips <- as.vector(dd)
+new_tips <- unlist(new_tips$tips)
+
+random_tree$tip.label <- new_tips
+
+#When you read in the OTU table, samnple with D- are replaced with D. so you need to correct this.
+#additionally, when you read in the table, the first column adds an X which need to be removed
+#If you don't do this, you are not able to make your phyloseq object xoxo
+
+otu_table_in <- read.table('~/Int_hydrocarbon/seqtab.txt', sep = "\t", row.names = 1, header = T, check.names = F)
+otu_table_in <- as.matrix(otu_table_in)
+
+
+taxonomy <- readDNAStringSet('~/Int_hydrocarbon/repset.fasta')
+taxonomy <- as.data.frame(taxonomy)
+tax <- rownames(taxonomy) %>% as.data.frame()
+tax <- stringr::str_split_fixed(tax$., ";", 7) %>% as.data.frame()
+tax1 <- str_split_fixed(tax$V1, " ", 2) %>% as.data.frame()
+tax <- cbind(tax1, tax)
+tax <- tax[-c(3,9)]
+row.names(tax) <- tax$V1
+tax <- tax[-c(1)]
+colnames(tax) <- c("Domain", "Phylum", "Class", "Order", "Family", "Genus")
+tax1 <- stringr::str_split_fixed(tax1$V1, "_", 2) %>% as.data.frame()
+tax1 <- tax1[c(2)]
+tax <- cbind(tax, tax1)
+tax$V2 <- as.numeric(as.character(tax$V2))
+tax <- tax %>% arrange(V2)
+tax <- tax[c(1:6)]
+
+tax <- as.matrix(tax)
+
+#tax1 <- stringr::str_split_fixed(tax$V7, "_", 2) %>% base::as.data.frame()
+
+
+#Remove SRR14410552 as this sample does not make it through DADA2
+
+metadata <- read.delim('~/Int_hydrocarbon/metadata.txt')
+rownames(metadata) <- metadata[,1]
+
+metadata$Reservoir_number <- as.factor(as.character(metadata$Reservoir_number))
+metadata$Type <- as.factor(as.character(metadata$Type))
+metadata$Type_collapsed <- as.factor(as.character(metadata$Type_collapsed))
+metadata$Country <- as.factor(as.character(metadata$Country))
+metadata$Country <- factor(metadata$Country, levels = c("NZ", "Canada", "China", "Czech", "Brazil", "Slovakia", "UK", "USA"))
+metadata <- metadata[c(1:9)]
+metadata$Region <- as.factor(as.character(metadata$Region))
+metadata$Location <- as.factor(as.character(metadata$Location))
+metadata$Reservoir <- as.factor(as.character(metadata$Reservoir))
+metadata$Reservoir_number <- as.factor(as.character(metadata$Reservoir_number))
+metadata$Sample <- as.factor(as.character(metadata$Sample))
+metadata$Sample_ID <- as.factor(as.character(metadata$Sample_ID))
+metadata$Project <- as.factor(as.character(metadata$Project))
+
+a <- tax[c(1)]
+b <- otu_table_in[c(1)]
+all(rownames(otu_table_in) == rownames(tax))
+
+phylo <- phyloseq(otu_table(otu_table_in, taxa_are_rows=T), 
+               sample_data(metadata), 
+               tax_table(tax), random_tree)
+
+#bbb <- UniFrac(phyphyphy)
+
+
+phylo <- phyloseq::subset_taxa(phylo, Family != "Mitochondria")
+#Removes 116
+phylo <- phyloseq::subset_taxa(phylo, Order != "Chloroplast")
+#Removes 87
+phylo <- phyloseq::subset_taxa(phylo, Domain != "NA")
+#Removes 30
+phylo <- phyloseq::subset_taxa(phylo, Domain != "Eukaryota")
+#Removes 6
+
+sort(sample_sums(phylo))
+
+##Rerefy to 2000, of the 108 samples, 7 are lost(ASV count): (SRR15014597(977), SRR15014593(1495), SRR13192706(2088), SRR11284351(2149), SRR15014596(2984), SRR15014595(3246))
+
+rarephy <- rarefy_even_depth(phylo, 2000, rngseed = T)
+
+#Tidy up
+
+rm(tax1)
+rm(taxonomy)
+
+
+
+```
+
+```{r}
+otu_flip <- t(otu_table_in)
+
+
+ordpcw <- ordinate(phylo, "PCoA", "unifrac", weighted = T)
+ordpcunw <- ordinate(phylo, "PCoA", "unifrac", weighted = F)
+ordpcwrare <- ordinate(rarephy, "PCoA", "unifrac", weighted = T)
+ordpcunwrare
+plot_ordination(rarephy, ordpcwrare, type = "scree")
+ordpcunwrare <- ordinate(rarephy, "PCoA", "unifrac", weighted = F)
+
+
+levels <- levels(sample_data(rarephy)$Country)
+default_colors <- scales::hue_pal()(length(levels))
+names(default_colors) <- levels
+default_colors["NZ"] <- "slategray2"  # Only change TreatmentA to red
+
+pc_w_rare <- plot_ordination(rarephy, ordpcwrare, color = "Country", shape = "Type") + theme_bw() + geom_point(size = 4) + theme(legend.position = "bottom", legend.text = element_text(size = 12), legend.title = element_text(size = 14), axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 10)) + guides(color = guide_legend(nrow = 2, byrow = T), shape = guide_legend(nrow = 1, byrow = T)) + scale_color_manual(values = default_colors) + stat_ellipse(aes(color = Country, group = Country))
+
+
+pc_unw_rare <- plot_ordination(rarephy, ordpcunwrare, color = "Country", shape = "Type") + theme_bw() + geom_point(size = 4) + theme(legend.position = "none") + scale_color_manual(values = default_colors) + stat_ellipse(aes(color = Country, group = Country))
+
+
+ggarrange(pc_unw_rare, pc_w_rare, nrow = 2)
+
+ggsave("~/Int_hydrocarbon/manuscript_2.2.png", units = "cm", width = 25, height = 30)
+
+```
+
+
+
+
+

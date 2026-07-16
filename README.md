@@ -8,12 +8,13 @@ Purpose of the project:
 
 You have a variety of .RMD files and collections of data
 1. Aotearoa-New Zealand 16S rRNA amplicon sequencing code
-   - Taranaki_Analysis
+   - Taranaki_dada_taxonomy
+   - Taranaki_Manuscript
 3. International Oil and Gas reservoir meta-analysis code
    - Hydrocarbon_Water_Dada2_alignment
-   - Hydrocarbon_UNIFRAC
+   - Hydrocarbon_Global_Manuscript
 4. All water meta-analysis code
    - Hydrocarbon_Water_Dada2_alignment
-   - Water_UNIFRAC
+   - Water_Manuscript
 
 The Hydrocarbon_Water_Dada2_alignment.Rmd file contains all of the code performed for both the hydrocarbon analysis and the combined hydrocarbon-water analysis. Despite this being in one .Rmd, this analysis was done separately (the hydrocarbon was conducted first and then the water was completed afterwards)

@@ -73,36 +73,15 @@ tax <- as.matrix(tax)
 
 #tax1 <- stringr::str_split_fixed(tax$V7, "_", 2) %>% base::as.data.frame()
 
-
-#Remove SRR14410552 as this sample does not make it through DADA2
-
 metadata <- read.delim('~/Int_hydrocarbon/metadata.txt')
 rownames(metadata) <- metadata[,1]
 
-metadata$Reservoir_number <- as.factor(as.character(metadata$Reservoir_number))
-metadata$Type <- as.factor(as.character(metadata$Type))
-metadata$Type_collapsed <- as.factor(as.character(metadata$Type_collapsed))
 metadata$Country <- as.factor(as.character(metadata$Country))
 metadata$Country <- factor(metadata$Country, levels = c("NZ", "Canada", "China", "Czech", "Brazil", "Slovakia", "UK", "USA"))
-metadata <- metadata[c(1:9)]
-metadata$Region <- as.factor(as.character(metadata$Region))
-metadata$Location <- as.factor(as.character(metadata$Location))
-metadata$Reservoir <- as.factor(as.character(metadata$Reservoir))
-metadata$Reservoir_number <- as.factor(as.character(metadata$Reservoir_number))
-metadata$Sample <- as.factor(as.character(metadata$Sample))
-metadata$Sample_ID <- as.factor(as.character(metadata$Sample_ID))
-metadata$Project <- as.factor(as.character(metadata$Project))
-
-a <- tax[c(1)]
-b <- otu_table_in[c(1)]
-all(rownames(otu_table_in) == rownames(tax))
 
 phylo <- phyloseq(otu_table(otu_table_in, taxa_are_rows=T), 
                sample_data(metadata), 
                tax_table(tax), random_tree)
-
-#bbb <- UniFrac(phyphyphy)
-
 
 phylo <- phyloseq::subset_taxa(phylo, Family != "Mitochondria")
 #Removes 116
@@ -113,9 +92,14 @@ phylo <- phyloseq::subset_taxa(phylo, Domain != "NA")
 phylo <- phyloseq::subset_taxa(phylo, Domain != "Eukaryota")
 #Removes 6
 
+#Determine how many ASVs were lost due to refining phyloseq object
+otu_out <- otu_table(phylo) %>% as.data.frame()
+sum_table <- data.frame(Total = colSums(otu_out, na.rm = TRUE))
+print(sum_table)
+
 sort(sample_sums(phylo))
 
-##Rerefy to 2000, of the 108 samples, 7 are lost(ASV count): (SRR15014597(977), SRR15014593(1495), SRR13192706(2088), SRR11284351(2149), SRR15014596(2984), SRR15014595(3246))
+##Rerefy to 2000, of the 98 samples, 2 are lost(ASV count): (SRR15014597(977), SRR15014593(1495))
 
 rarephy <- rarefy_even_depth(phylo, 2000, rngseed = T)
 
@@ -129,24 +113,16 @@ rm(taxonomy)
 ```
 
 ```{r}
-otu_flip <- t(otu_table_in)
-
-
-ordpcw <- ordinate(phylo, "PCoA", "unifrac", weighted = T)
-ordpcunw <- ordinate(phylo, "PCoA", "unifrac", weighted = F)
 ordpcwrare <- ordinate(rarephy, "PCoA", "unifrac", weighted = T)
-ordpcunwrare
-plot_ordination(rarephy, ordpcwrare, type = "scree")
 ordpcunwrare <- ordinate(rarephy, "PCoA", "unifrac", weighted = F)
 
 
 levels <- levels(sample_data(rarephy)$Country)
 default_colors <- scales::hue_pal()(length(levels))
 names(default_colors) <- levels
-default_colors["NZ"] <- "slategray2"  # Only change TreatmentA to red
+default_colors["NZ"] <- "slategray2"
 
 pc_w_rare <- plot_ordination(rarephy, ordpcwrare, color = "Country", shape = "Type") + theme_bw() + geom_point(size = 4) + theme(legend.position = "bottom", legend.text = element_text(size = 12), legend.title = element_text(size = 14), axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 10)) + guides(color = guide_legend(nrow = 2, byrow = T), shape = guide_legend(nrow = 1, byrow = T)) + scale_color_manual(values = default_colors) + stat_ellipse(aes(color = Country, group = Country))
-
 
 pc_unw_rare <- plot_ordination(rarephy, ordpcunwrare, color = "Country", shape = "Type") + theme_bw() + geom_point(size = 4) + theme(legend.position = "none") + scale_color_manual(values = default_colors) + stat_ellipse(aes(color = Country, group = Country))
 

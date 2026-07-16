@@ -29,7 +29,7 @@ cutadapt <- "/usr/local/bin/cutadapt" # This is the path to cutadapt on the UC s
 system2(cutadapt, args = "--version") # Check by running shell command from R
 
 # Set path to shared data folder and contents
-data.fp <- "/home/xphiles/data/Kelsey/og_gtdb" 
+data.fp <- "~/og_gtdb" 
 
 # List all files in shared folder to check path
 list.files(data.fp)
@@ -37,10 +37,7 @@ list.files(data.fp)
 
 # Set up file paths in YOUR directory where you want data; 
 ```{r}
-project.fp <- "/home/xphiles/data/Kelsey/og_gtdb" # CHANGE ME to project directory; don't append with a "/" 
-
-#If your data has already been demultiplexed place all of your files into a directory within the project folder and use the following code:
-demultiplex.fp<- "/home/xphiles/data/Kelsey/og_gtdb"
+project.fp <- "~/og_gtdb" 
 
 # Set up names of sub directories to stay organized
 preprocess.fp <- file.path(project.fp, "01_preprocess")
@@ -290,11 +287,6 @@ saveRDS(errR_plot, paste0(filtpathR, "/errR_plot.rds"))
 
 ```
 
-#### Dereplication, sequence inference, and merging of paired-end reads
-For more information about these steps, see the tutorial on the github. For most of the Stott lab projects, you will want to use Samples Pooled
-
-Nick says to swap pool=T for pool=pseudo. this will preserve rare taxa
-
 #### Default: SAMPLES POOLED 
 ```{r}
 # same steps, not in loop
@@ -349,11 +341,11 @@ track$lost <- track$nonchim/track$input
 
 
 # Assign taxonomy
-tax <- assignTaxonomy(seqtab.nochim, "/home/xphiles/databases/silva_nr99_v138.1_train_set.fa", tryRC = TRUE, multithread=TRUE, minBoot = 80, outputBootstraps = TRUE) 
-taxa <- assignTaxonomy(seqtab.nochim, "/home/xphiles/databases/silva_nr99_v138.1_train_set.fa", tryRC = TRUE, multithread=TRUE, minBoot = 80, outputBootstraps = F) 
+tax <- assignTaxonomy(seqtab.nochim, "~/databases/silva_nr99_v138.1_train_set.fa", tryRC = TRUE, multithread=TRUE, minBoot = 80, outputBootstraps = TRUE) 
+taxa <- assignTaxonomy(seqtab.nochim, "~/databases/silva_nr99_v138.1_train_set.fa", tryRC = TRUE, multithread=TRUE, minBoot = 80, outputBootstraps = F) 
 # This uses the silva database v138. If you need a different database you will have to add it to the "/home/xphiles/databases" folder
 
-taxa <- addSpecies(taxa, "/home/xphiles/databases/silva_species_assignment_v138.1.fa.gz")
+taxa <- addSpecies(taxa, "~/databases/silva_species_assignment_v138.1.fa.gz")
 
 # Write results to disk
 saveRDS(seqtab.nochim, paste0(table.fp, "/seqtab_final.rds"))
@@ -450,7 +442,7 @@ writeRepSetFasta(taxonomy_species__tree_for_fasta, paste0(table.fp, "/repset_spe
 library(baseq)
 library(DECIPHER); packageVersion("DECIPHER")
 
-seqs <- readDNAStringSet( "/home/xphiles/data/Kelsey/og_gtdb/03_tabletax/repset_species_no_phylum.fasta")
+seqs <- readDNAStringSet( "~/03_tabletax/repset_species_no_phylum.fasta")
 
 seqs <- OrientNucleotides(seqs)
 aligned <- AlignSeqs(seqs)
@@ -460,7 +452,7 @@ writeXStringSet(aligned, paste0(table.fp, "/aligned_species.fasta"))
 
 library(phangorn); packageVersion("phangorn")
 
-alignment <- read.phyDat("/home/xphiles/data/Kelsey/og_gtdb/03_tabletax/aligned_species.fasta", format = "fasta", type = "DNA")
+alignment <- read.phyDat("~/03_tabletax/aligned_species.fasta", format = "fasta", type = "DNA")
 
 ##Alignment is an object of class phyDat
 

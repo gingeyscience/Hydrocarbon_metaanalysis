@@ -1,5 +1,5 @@
 ---
-title: "Both?!?!"
+title: "Both"
 author: "KJM"
 date: "2024-05-17"
 output: html_document
@@ -165,7 +165,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -292,7 +292,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -441,7 +441,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -589,7 +589,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -738,7 +738,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -887,7 +887,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -1036,7 +1036,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -1185,7 +1185,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -1333,7 +1333,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -1481,7 +1481,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -1630,7 +1630,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -1779,7 +1779,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -1928,7 +1928,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -2076,7 +2076,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -2225,7 +2225,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -2373,7 +2373,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -2522,7 +2522,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -2671,7 +2671,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -2820,7 +2820,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -2968,7 +2968,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -3117,7 +3117,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -3266,7 +3266,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -3414,7 +3414,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -3562,7 +3562,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -3711,7 +3711,7 @@ for(sam in sample.names) {
     # Dereplicate forward reads
     derep <- derepFastq(filts[[sam]])
     # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) #If processing ion torrent or 454 data add ", HOMOPOLYMER_GAP_PENALTY=-1, BAND_SIZE=32" to this line of code
+    dada <- dada(derep, err = err, multithread = TRUE) 
     dd[[sam]] <- dada
 }
 
@@ -3890,6 +3890,7 @@ gtdb_50 <- subset(taxonomy_g_50, is.na(tax.Phylum))
 gtdb_50 <- gtdb_50[c(2)]
 
 c <- merge(silva_50, gtdb_50)
+
 ##There are 560 ASVs that are NA at phylum for both GTDB and Silva
 
 taxonomy_s_na_removed <- anti_join(taxonomy_s, c, by = "ASV_ID")

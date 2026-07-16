@@ -1,0 +1,238 @@
+---
+title: "Untitled"
+output: html_document
+date: "2024-09-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Packages
+
+```{r}
+library(ggnested)
+library(fantaxtic)
+library(ape); packageVersion("ape")
+library(ggplot2); packageVersion("ggplot2")
+library(phyloseq); packageVersion("phyloseq")
+library(Biostrings); packageVersion("Biostrings")
+library(ranacapa); packageVersion("ranacapa")
+library(microbiome); packageVersion("microbiome")
+library(ggpubr); packageVersion("ggpubr")
+library(DEGreport); packageVersion("DEGreport")
+library(ggforce)
+library(ggrepel)
+library(viridis)
+library(RColorBrewer)
+library(stringr)
+library(vegan)
+```
+
+Make your phyloseq object
+
+```{r}
+seqtab.nochim <- read.table('~/Taranaki/seqtab_final.txt', sep = "\t", row.names = 1, header = T, check.names = F)
+taxa <- readDNAStringSet('~/Taranaki/repset_bootstrap.fasta')
+metadata <- read.delim('~/Taranaki/well_metadata_new_anon.txt', header = T, sep = "\t")
+rownames(metadata) <- metadata[,1]
+metadata$Well <- as.factor(as.character(metadata$Well))
+
+new_metadata <-  read.delim('~/Taranaki/well_metadata_merged.txt', header = T, sep = "\t")
+rownames(new_metadata) <- new_metadata[,1]
+
+taxa <- as.data.frame(taxa)
+taxa <- rownames(taxa) %>% as.data.frame()
+taxa <- str_split_fixed(taxa$., ";", 8) %>% as.data.frame()
+tax1 <- str_split_fixed(taxa$V1, " ", 2) %>% as.data.frame()
+taxa <- taxa[-c(1)]
+
+taxa <- cbind(tax1, taxa)
+row.names(taxa) <- taxa$V1
+taxa <- taxa[-c(1)]
+taxa <- taxa[-c(7:8)]
+colnames(taxa) <- c("Domain", "Phylum", "Class", "Order", "Family", "Genus")
+taxa <- as.matrix(taxa)
+
+
+ps <- phyloseq(otu_table(seqtab.nochim, taxa_are_rows=T), 
+               sample_data(metadata), 
+               tax_table(taxa))
+
+ntaxa(ps)
+nsamples(ps)
+sort(sample_sums(ps)) 
+
+
+ps <- phyloseq::subset_taxa(ps, Family != "Mitochondria")
+ps <- phyloseq::subset_taxa(ps, Order != "Chloroplast")
+ps <- phyloseq::subset_taxa(ps, Domain != "NA")
+
+sample_sums(ps) %>% summary()
+ntaxa(ps)
+
+rare_ps <- rarefy_even_depth(ps, 80000, rngseed = T)
+ntaxa(rare_ps)
+
+
+rm(taxa)
+rm(tax1)
+```
+
+Merge samples
+
+```{r}
+merged_wells <- c("Oil 1", "Oil 2", "Oil 3", "Gas 1", "Gas 2", "Gas 3", "Gas 4")
+sample_data(rare_ps)$merge_attempt <- get_variable(rare_ps, "Well") %in% merged_wells
+
+merged_ps <- merge_samples(rare_ps, "Well")
+SD <- merge_samples(sample_data(rare_ps), "Well")
+print(SD[, "Well"])
+ 
+print(merged_ps)
+
+sample_data(merged_ps) <- sample_data(new_metadata)
+```
+
+Beta diversity
+
+PCoA with Unifrac distance
+```{r}
+set.seed(105)
+
+color_site1 <- c("#FD8D3C", "#F03B20", "#BD0026", "#FF7256")
+color_site2 <- c("#8C96C6", "#8EE5EE", "#810F7C")
+
+NMDS.ord <- ordinate(rare_ps, "NMDS", "bray")
+NMDS.ord
+
+#Stress = 0.114
+
+NMDS_plot_well <- plot_ordination(rare_ps, NMDS.ord , color = "Well", shape = "Site")
+
+NMDS_plot_well + geom_point(size = 4) + theme(legend.text = element_text(size = 10)) + guides(color = guide_legend(override.aes = list(size = 4)),shape = guide_legend(override.aes = list(size = 4))) +
+    scale_colour_manual(values = c(color_site1,color_site2)) 
+
+nmdsvalues <- NMDS.ord$points %>% as.data.frame()
+new_metadata <- merge(metadata, nmdsvalues, by = "row.names", all.x = T)
+rownames(new_metadata) <- new_metadata[,1]
+new_metadata <- new_metadata[-c(1)]
+
+env <- metadata[c(4:17)]
+env <- env[-c(10)]
+
+en <- envfit(NMDS.ord, env, permutations = 999, na.rm = TRUE)
+en
+
+en_coord <- as.data.frame(scores(en, "vectors")) *ordiArrowMul(en)
+#Only significant correlations were kept, hence the weird numbering
+en_coord_sig <- en_coord[c(1,4,6,8:9,13),]
+
+beta <- ggplot(new_metadata, aes(x = MDS1, y = MDS2))+
+  geom_point(aes(colour = Well, size = 5)) +
+  geom_text_repel(data = en_coord_sig, aes(x = NMDS1, y = NMDS2), 
+                  colour = "grey30",fontface = "bold", 
+                  label = row.names(en_coord_sig), nudge_x = 0.05) + 
+     geom_segment(aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2), 
+       data = en_coord_sig, size =1, alpha = 0.5, colour = "grey30") + xlab("NMDS1") + ylab("NMDS2") + guides(size = "none") + guides(color = guide_legend(override.aes = list(size = 3)), shape = guide_legend(override.aes = list(size = 3))) +
+    scale_colour_manual(values = c(color_site1,color_site2)) + theme_bw()
+
+ggsave("Taranaki_beta_nmds_bray_w_arrows_plain.png", units = "cm", width = 22, height = 12)
+```
+
+
+
+Relative Abundance
+
+```{r}
+merged_wells <- c("Oil 1", "Oil 2", "Oil 3", "Gas 1", "Gas 2", "Gas 3", "Gas 4")
+sample_data(rare_ps)$merge_attempt <- get_variable(rare_ps, "Well") %in% merged_wells
+
+merged_ps <- merge_samples(rare_ps, "Well")
+SD <- merge_samples(sample_data(rare_ps), "Well")
+print(SD[, "Well"])
+ 
+print(merged_ps)
+library(grid)
+
+top_asv_20 <- fantaxtic::top_taxa(merged_ps, n_taxa = 20)
+p_20 <- plot_nested_bar(ps_obj = top_asv_20$ps_obj,
+                top_level = "Phylum",
+                nested_level = "Genus") + guides(fill=guide_legend(ncol = 2)) + labs(x="", y = "Relative Abundance") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+p_20
+
+
+tax_table <- tax_table %>%
+  mutate(
+    plot_label = coalesce(Genus, Family, Order, Class, Phylum)
+  )
+
+
+library(svglite)
+
+ggsave("/Users/kelse/UC Enterprise Dropbox/Kelsey McKenzie/PhD/Papers/comparative analysis/This is legit your finalised files/Taranaki/abundance_plot_merged_poster.svg", units = "cm", width = 15, height = 19.5)
+
+```
+
+```{r}
+tax_df <- as.data.frame(tax_table(merged_ps))
+
+# Rename genus: replace "OldGenus" with "NewGenus"
+tax_df$Genus[tax_df$Genus == "Burkholderia-Caballeronia-Paraburkholderia"] <- "BCP"
+
+# Check column names
+colnames(tax_df)
+
+tax_df <- tax_df %>%
+  mutate(across(
+    c(Genus, Family, Order, Class, Phylum),
+    ~na_if(., "NA")
+  ))
+
+tax_df <- tax_df %>%
+  mutate(
+    plot_label = case_when(
+      !is.na(Genus)  ~ paste0("<i>", Genus, "</i>"),
+      !is.na(Family) ~ paste0("f__", Family),
+      !is.na(Order)  ~ paste0("o__", Order),
+      !is.na(Class)  ~ paste0("c__", Class),
+      !is.na(Phylum) ~ paste0("p__", Phylum),
+      TRUE ~ "Unassigned"
+    )
+  )
+
+tax_table(merged_ps) <- tax_table(as.matrix(tax_df))
+
+top_taxa <- top_taxa(
+  merged_ps,
+  level = "plot_label",
+  n_taxa = 20
+)
+
+
+p_20.1 <- plot_nested_bar(
+  ps_obj = top_taxa$ps_obj,
+  top_level = "Phylum",
+  nested_level = "plot_label"
+) +
+  guides(fill=guide_legend(ncol = 2)) +
+  labs(x = "", y = "Relative Abundance") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.text = ggtext::element_markdown()
+  )
+
+p_20.2 <- p_20.1 + theme(legend.title=element_blank())
+
+
+ggarrange(p_20.2, beta, ncol = 1)
+ggsave("/Users/kelse/UC Enterprise Dropbox/Kelsey McKenzie/PhD/Papers/comparative analysis/This is legit your finalised files/Taranaki/manuscipt_22.png", units = "cm", width = 20, height = 25)
+
+```
+
+
+
+
+
+

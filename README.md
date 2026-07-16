@@ -4,7 +4,7 @@ This contains all of your code and data for the metaanalysis paper.
 Purpose of the project:
 - Determine the microbial communities of sampled oil and gas reservoirs in thr Taranaki region
 - Compare how the A-NZ microbial communites look to international examples (primer-specific)
-- Compare the international oil and gas communities to international water samples, are these distinct form other water communities?
+- Compare the international oil and gas communities to international water samples, are these distinct from other water communities?
 
 You have a variety of .RMD files and collections of data
 1. Aotearoa-New Zealand 16S rRNA amplicon sequencing code

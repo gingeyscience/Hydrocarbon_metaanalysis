@@ -764,6 +764,156 @@ rm(mergers)
 rm(filt_out)
 ```
 
+Study 6 
+```{r}
+project.fp <- "~/Single_End/Study6" 
+
+preprocess.fp <- file.path(project.fp, "01_preprocess")
+    filtN.fp <- file.path(preprocess.fp, "filtN")
+    trimmed.fp <- file.path(preprocess.fp, "trimmed")
+filter.fp <- file.path(project.fp, "02_filter") 
+table.fp <- file.path(project.fp, "03_tabletax") 
+
+
+fns <- list.files(project.fp, pattern=".fa",full.names = TRUE)
+
+fns.filtN <- file.path(preprocess.fp, "filtN", basename(fns))
+
+filterAndTrim(fns, fns.filtN, maxN = 0, multithread = TRUE) 
+
+
+
+# Save the primer orientations to pass to cutadapt
+FWD.orients <- allOrients(FWD)
+REV.orients <- allOrients(REV)
+FWD.orients
+
+# Write a function that counts how many time primers appear in a sequence
+primerHits <- function(primer, fn) {
+    # Counts number of reads in which the primer is found
+    nhits <- vcountPattern(primer, sread(readFastq(fn)), fixed = FALSE)
+    return(sum(nhits > 0))
+}
+
+
+rbind(FWD.Reads = sapply(FWD.orients, primerHits, fn = fns.filtN[[1]]), 
+      REV.Reads = sapply(REV.orients, primerHits, fn = fns.filtN[[1]]))
+
+# Create directory to hold the output from cutadapt
+if (!dir.exists(trimmed.fp)) dir.create(trimmed.fp)
+fns.cut <- file.path(trimmed.fp, basename(fns))
+
+# Save the reverse complements of the primers to variables
+FWD.RC <- dada2:::rc(FWD)
+REV.RC <- dada2:::rc(REV)
+
+##  Create the cutadapt flags ##
+# Trim FWD and the reverse-complement of REV off of R1 (forward reads)
+R1.flags <- paste("-g", FWD, "-a", REV.RC, "--minimum-length 50") 
+
+# Run Cutadapt
+for (i in seq_along(fns)) {
+    system2("cutadapt.sh", args = c(R1.flags, "-n", 2, # -n 2 required to remove FWD and REV from reads
+                              "-o", fns.cut[i], # output files
+                              fns.filtN[i])) # input files
+}
+
+rbind(FWD.Reads = sapply(FWD.orients, primerHits, fn = fns.cut[[1]]), 
+      REV.Reads = sapply(REV.orients, primerHits, fn = fns.cut[[1]]))
+
+# Put filtered reads into separate sub-directories for big data workflow
+dir.create(filter.fp)
+    sub.fp <- file.path(filter.fp, "preprocessed") 
+  
+dir.create(sub.fp)
+
+# Move R1 and R2 from trimmed to separate forward/reverse sub-directories
+fns.Q <- file.path(sub.fp,  basename(fns)) 
+file.rename(from = fns.cut, to = fns.Q)
+
+# File parsing; create file names and make sure that forward and reverse files match
+filtpath <- file.path(sub.fp, "filtered") # files go into preprocessed_F/filtered/
+fastqs <- sort(list.files(sub.fp, pattern=".f"))
+
+
+
+filt_out <- filterAndTrim(file.path(sub.fp, fastqs), file.path(filtpath, fastqs), 
+              truncLen=120, maxEE=1, truncQ=2, rm.phix=TRUE,
+              compress=TRUE, verbose=TRUE, multithread=TRUE) #If running ion torrent data add ", trimLeft=15" to this line of code
+
+head(filt_out)
+
+# summary of samples in filt_out by percentage
+filt_out %>% 
+  data.frame() %>% 
+  mutate(Samples = rownames(.),
+         percent_kept = 100*(reads.out/reads.in)) %>%
+  select(Samples, everything()) %>%
+  summarise(min_remaining = paste0(round(min(percent_kept), 2), "%"), 
+            median_remaining = paste0(round(median(percent_kept), 2), "%"),
+            mean_remaining = paste0(round(mean(percent_kept), 2), "%"), 
+            max_remaining = paste0(round(max(percent_kept), 2), "%"))
+
+# File parsing
+filts <- list.files(filtpath, pattern=".f", full.names = TRUE)
+
+# Sample names in order
+sample.names <- substring(basename(filts), regexpr("", basename(filts))) # doesn't drop fastq.gz
+sample.names <- gsub("_1.fastq", "", sample.names)
+sample.names <- gsub(".fastq", "", sample.names)
+sample.names <- gsub("_1.R1.fq", "", sample.names)
+sample.names
+
+# Double check
+names(filts) <- sample.names
+
+err <- learnErrors(filts, nbases = 1e9, multithread = TRUE, randomize = TRUE)
+err_plot <- plotErrors(err, nominalQ = TRUE)
+err_plot
+
+# write to disk
+saveRDS(err_plot, paste0(filtpath, "/err_plot.rds"))
+
+# make lists to hold the loop output
+mergers <- vector("list", length(sample.names))
+
+names(mergers) <- sample.names
+dd <- vector("list", length(sample.names))
+names(dd) <- sample.names
+
+# For each sample, get a list of merged and denoised sequences
+for(sam in sample.names) {
+    cat("Processing:", sam, "\n")
+    # Dereplicate forward reads
+    derep <- derepFastq(filts[[sam]])
+    # Infer sequences for forward reads
+    dada <- dada(derep, err = err, multithread = TRUE) 
+    dd[[sam]] <- dada
+}
+
+getN <- function(x) sum(getUniques(x))
+
+track <- cbind(filt_out, getN(dada))
+# If processing a single sample, remove the sapply calls: e.g. replace sapply(dadaFs, getN) with getN(dadaFs)
+colnames(track) <- c("input", "filtered", "merged")
+rownames(track) <- sample.names
+track <- track %>% as.data.frame()
+
+track_combined <- rbind(track_combined, track)
+
+combined <- append(combined, dd)
+
+rm(track)
+rm(derep)
+rm(dada)
+rm(dd)
+rm(err)
+rm(err_plot)
+rm(mergers)
+rm(filt_out)
+```
+
+
 Study 7
 ```{r}
 project.fp <- "~/Single_End/Study7" 
@@ -3439,305 +3589,6 @@ rm(err_plot)
 rm(mergers)
 rm(filt_out)
 ```
-
-Study 26
-```{r}
-project.fp <- "~/Single_End/Study26" 
-
-preprocess.fp <- file.path(project.fp, "01_preprocess")
-    filtN.fp <- file.path(preprocess.fp, "filtN")
-    trimmed.fp <- file.path(preprocess.fp, "trimmed")
-filter.fp <- file.path(project.fp, "02_filter") 
-table.fp <- file.path(project.fp, "03_tabletax") 
-
-
-fns <- list.files(project.fp, pattern=".fa",full.names = TRUE)
-
-fns.filtN <- file.path(preprocess.fp, "filtN", basename(fns))
-
-filterAndTrim(fns, fns.filtN, maxN = 0, multithread = TRUE) 
-
-
-# Save the primer orientations to pass to cutadapt
-FWD.orients <- allOrients(FWD)
-REV.orients <- allOrients(REV)
-FWD.orients
-
-# Write a function that counts how many time primers appear in a sequence
-primerHits <- function(primer, fn) {
-    # Counts number of reads in which the primer is found
-    nhits <- vcountPattern(primer, sread(readFastq(fn)), fixed = FALSE)
-    return(sum(nhits > 0))
-}
-
-
-rbind(FWD.Reads = sapply(FWD.orients, primerHits, fn = fns.filtN[[1]]), 
-      REV.Reads = sapply(REV.orients, primerHits, fn = fns.filtN[[1]]))
-
-# Create directory to hold the output from cutadapt
-if (!dir.exists(trimmed.fp)) dir.create(trimmed.fp)
-fns.cut <- file.path(trimmed.fp, basename(fns))
-
-# Save the reverse complements of the primers to variables
-FWD.RC <- dada2:::rc(FWD)
-REV.RC <- dada2:::rc(REV)
-
-##  Create the cutadapt flags ##
-# Trim FWD and the reverse-complement of REV off of R1 (forward reads)
-R1.flags <- paste("-g", FWD, "-a", REV.RC, "--minimum-length 50") 
-
-# Run Cutadapt
-for (i in seq_along(fns)) {
-    system2("cutadapt.sh", args = c(R1.flags, "-n", 2, # -n 2 required to remove FWD and REV from reads
-                              "-o", fns.cut[i], # output files
-                              fns.filtN[i])) # input files
-}
-
-rbind(FWD.Reads = sapply(FWD.orients, primerHits, fn = fns.cut[[1]]), 
-      REV.Reads = sapply(REV.orients, primerHits, fn = fns.cut[[1]]))
-
-# Put filtered reads into separate sub-directories for big data workflow
-dir.create(filter.fp)
-    sub.fp <- file.path(filter.fp, "preprocessed") 
-  
-dir.create(sub.fp)
-
-# Move R1 and R2 from trimmed to separate forward/reverse sub-directories
-fns.Q <- file.path(sub.fp,  basename(fns)) 
-file.rename(from = fns.cut, to = fns.Q)
-
-# File parsing; create file names and make sure that forward and reverse files match
-filtpath <- file.path(sub.fp, "filtered") # files go into preprocessed_F/filtered/
-fastqs <- sort(list.files(sub.fp, pattern=".f"))
-
-
-
-filt_out <- filterAndTrim(file.path(sub.fp, fastqs), file.path(filtpath, fastqs), 
-              truncLen=120, maxEE=1, truncQ=2, rm.phix=TRUE,
-              compress=TRUE, verbose=TRUE, multithread=TRUE) #If running ion torrent data add ", trimLeft=15" to this line of code
-
-head(filt_out)
-
-# summary of samples in filt_out by percentage
-filt_out %>% 
-  data.frame() %>% 
-  mutate(Samples = rownames(.),
-         percent_kept = 100*(reads.out/reads.in)) %>%
-  select(Samples, everything()) %>%
-  summarise(min_remaining = paste0(round(min(percent_kept), 2), "%"), 
-            median_remaining = paste0(round(median(percent_kept), 2), "%"),
-            mean_remaining = paste0(round(mean(percent_kept), 2), "%"), 
-            max_remaining = paste0(round(max(percent_kept), 2), "%"))
-
-# File parsing
-filts <- list.files(filtpath, pattern=".f", full.names = TRUE)
-
-# Sample names in order
-sample.names <- substring(basename(filts), regexpr("", basename(filts))) # doesn't drop fastq.gz
-sample.names <- gsub("_1.fastq", "", sample.names)
-sample.names <- gsub(".fastq", "", sample.names)
-sample.names <- gsub("_1.R1.fq", "", sample.names)
-sample.names
-
-# Double check
-names(filts) <- sample.names
-
-err <- learnErrors(filts, nbases = 1e9, multithread = TRUE, randomize = TRUE)
-err_plot <- plotErrors(err, nominalQ = TRUE)
-err_plot
-
-# write to disk
-saveRDS(err_plot, paste0(filtpath, "/err_plot.rds"))
-
-# make lists to hold the loop output
-mergers <- vector("list", length(sample.names))
-
-names(mergers) <- sample.names
-dd <- vector("list", length(sample.names))
-names(dd) <- sample.names
-
-# For each sample, get a list of merged and denoised sequences
-for(sam in sample.names) {
-    cat("Processing:", sam, "\n")
-    # Dereplicate forward reads
-    derep <- derepFastq(filts[[sam]])
-    # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) 
-    dd[[sam]] <- dada
-}
-
-getN <- function(x) sum(getUniques(x))
-
-track <- cbind(filt_out, sapply(dd, getN))
-# If processing a single sample, remove the sapply calls: e.g. replace sapply(dadaFs, getN) with getN(dadaFs)
-colnames(track) <- c("input", "filtered", "merged")
-rownames(track) <- sample.names
-track <- track %>% as.data.frame()
-
-track_combined <- rbind(track_combined, track)
-
-combined <- append(combined, dd)
-
-rm(track)
-rm(derep)
-rm(dada)
-rm(dd)
-rm(err)
-rm(err_plot)
-rm(mergers)
-rm(filt_out)
-```
-
-Study 27
-```{r}
-project.fp <- "~/Single_End/Study27" 
-
-preprocess.fp <- file.path(project.fp, "01_preprocess")
-    filtN.fp <- file.path(preprocess.fp, "filtN")
-    trimmed.fp <- file.path(preprocess.fp, "trimmed")
-filter.fp <- file.path(project.fp, "02_filter") 
-table.fp <- file.path(project.fp, "03_tabletax") 
-
-
-fns <- list.files(project.fp, pattern=".fa",full.names = TRUE)
-
-fns.filtN <- file.path(preprocess.fp, "filtN", basename(fns))
-
-filterAndTrim(fns, fns.filtN, maxN = 0, multithread = TRUE) 
-
-
-
-# Save the primer orientations to pass to cutadapt
-FWD.orients <- allOrients(FWD)
-REV.orients <- allOrients(REV)
-FWD.orients
-
-# Write a function that counts how many time primers appear in a sequence
-primerHits <- function(primer, fn) {
-    # Counts number of reads in which the primer is found
-    nhits <- vcountPattern(primer, sread(readFastq(fn)), fixed = FALSE)
-    return(sum(nhits > 0))
-}
-
-
-rbind(FWD.Reads = sapply(FWD.orients, primerHits, fn = fns.filtN[[1]]), 
-      REV.Reads = sapply(REV.orients, primerHits, fn = fns.filtN[[1]]))
-
-# Create directory to hold the output from cutadapt
-if (!dir.exists(trimmed.fp)) dir.create(trimmed.fp)
-fns.cut <- file.path(trimmed.fp, basename(fns))
-
-# Save the reverse complements of the primers to variables
-FWD.RC <- dada2:::rc(FWD)
-REV.RC <- dada2:::rc(REV)
-
-##  Create the cutadapt flags ##
-# Trim FWD and the reverse-complement of REV off of R1 (forward reads)
-R1.flags <- paste("-g", FWD, "-a", REV.RC, "--minimum-length 50") 
-
-# Run Cutadapt
-for (i in seq_along(fns)) {
-    system2("cutadapt.sh", args = c(R1.flags, "-n", 2, # -n 2 required to remove FWD and REV from reads
-                              "-o", fns.cut[i], # output files
-                              fns.filtN[i])) # input files
-}
-
-rbind(FWD.Reads = sapply(FWD.orients, primerHits, fn = fns.cut[[1]]), 
-      REV.Reads = sapply(REV.orients, primerHits, fn = fns.cut[[1]]))
-
-# Put filtered reads into separate sub-directories for big data workflow
-dir.create(filter.fp)
-    sub.fp <- file.path(filter.fp, "preprocessed") 
-  
-dir.create(sub.fp)
-
-# Move R1 and R2 from trimmed to separate forward/reverse sub-directories
-fns.Q <- file.path(sub.fp,  basename(fns)) 
-file.rename(from = fns.cut, to = fns.Q)
-
-# File parsing; create file names and make sure that forward and reverse files match
-filtpath <- file.path(sub.fp, "filtered") # files go into preprocessed_F/filtered/
-fastqs <- sort(list.files(sub.fp, pattern=".f"))
-
-
-
-filt_out <- filterAndTrim(file.path(sub.fp, fastqs), file.path(filtpath, fastqs), 
-              truncLen=120, maxEE=1, truncQ=2, rm.phix=TRUE,
-              compress=TRUE, verbose=TRUE, multithread=TRUE) #If running ion torrent data add ", trimLeft=15" to this line of code
-
-head(filt_out)
-
-# summary of samples in filt_out by percentage
-filt_out %>% 
-  data.frame() %>% 
-  mutate(Samples = rownames(.),
-         percent_kept = 100*(reads.out/reads.in)) %>%
-  select(Samples, everything()) %>%
-  summarise(min_remaining = paste0(round(min(percent_kept), 2), "%"), 
-            median_remaining = paste0(round(median(percent_kept), 2), "%"),
-            mean_remaining = paste0(round(mean(percent_kept), 2), "%"), 
-            max_remaining = paste0(round(max(percent_kept), 2), "%"))
-
-# File parsing
-filts <- list.files(filtpath, pattern=".f", full.names = TRUE)
-
-# Sample names in order
-sample.names <- substring(basename(filts), regexpr("", basename(filts))) # doesn't drop fastq.gz
-sample.names <- gsub("_1.fastq", "", sample.names)
-sample.names <- gsub(".fastq", "", sample.names)
-sample.names <- gsub("_1.R1.fq", "", sample.names)
-sample.names
-
-# Double check
-names(filts) <- sample.names
-
-err <- learnErrors(filts, nbases = 1e9, multithread = TRUE, randomize = TRUE)
-err_plot <- plotErrors(err, nominalQ = TRUE)
-err_plot
-
-# write to disk
-saveRDS(err_plot, paste0(filtpath, "/err_plot.rds"))
-
-# make lists to hold the loop output
-mergers <- vector("list", length(sample.names))
-
-names(mergers) <- sample.names
-dd <- vector("list", length(sample.names))
-names(dd) <- sample.names
-
-# For each sample, get a list of merged and denoised sequences
-for(sam in sample.names) {
-    cat("Processing:", sam, "\n")
-    # Dereplicate forward reads
-    derep <- derepFastq(filts[[sam]])
-    # Infer sequences for forward reads
-    dada <- dada(derep, err = err, multithread = TRUE) 
-    dd[[sam]] <- dada
-}
-
-getN <- function(x) sum(getUniques(x))
-
-track <- cbind(filt_out, sapply(dd, getN))
-# If processing a single sample, remove the sapply calls: e.g. replace sapply(dadaFs, getN) with getN(dadaFs)
-colnames(track) <- c("input", "filtered", "merged")
-rownames(track) <- sample.names
-track <- track %>% as.data.frame()
-
-track_combined <- rbind(track_combined, track)
-
-combined <- append(combined, dd)
-
-rm(track)
-rm(derep)
-rm(dada)
-rm(dd)
-rm(err)
-rm(err_plot)
-rm(mergers)
-rm(filt_out)
-```
-
-
 ```{r}
 saveRDS(track_combined, "track_combined_hydrocarbon.rds")
 saveRDS(combined, "combined_hydrocarbon.rds")
